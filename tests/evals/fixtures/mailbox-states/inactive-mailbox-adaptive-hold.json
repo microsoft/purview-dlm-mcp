@@ -1,0 +1,48 @@
+{
+  "name": "inactive-mailbox-adaptive-hold",
+  "description": "Inactive mailbox with ComplianceTagHold + adaptive scope policy hold preventing deletion",
+  "commands": [
+    {
+      "command": "Get-Mailbox -InactiveMailboxOnly -Identity john.doe@contoso.com | FL DisplayName,IsInactiveMailbox,InPlaceHolds,LitigationHoldEnabled,ComplianceTagHoldApplied,DelayHoldApplied,WhenSoftDeleted",
+      "command_pattern": "get-mailbox.*inactivemailboxonly.*john",
+      "output": "DisplayName              : John Doe\nIsInactiveMailbox        : True\nInPlaceHolds             : {UniH9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d}\nLitigationHoldEnabled    : False\nComplianceTagHoldApplied : True\nDelayHoldApplied         : False\nWhenSoftDeleted          : 11/15/2025 12:00:00 AM",
+      "exit_code": 0,
+      "duration_ms": 1800
+    },
+    {
+      "command": "Get-RetentionCompliancePolicy | FL Name,Guid,Enabled",
+      "command_pattern": "get-retentioncompliancepolicy.*(?:format-list|fl)",
+      "output": "Name    : Legal Records Retention\nGuid    : 9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d\nEnabled : True\n\nName    : Standard 3Y Retention\nGuid    : 2f3a4b5c-6d7e-8f9a-0b1c-2d3e4f5a6b7c\nEnabled : True",
+      "exit_code": 0,
+      "duration_ms": 2200
+    },
+    {
+      "command": "Get-RetentionCompliancePolicy \"Legal Records Retention\" | FL AdaptiveScopeLocation,ExchangeLocation",
+      "command_pattern": "get-retentioncompliancepolicy.*legal.records",
+      "output": "AdaptiveScopeLocation : {Legal Department Scope}\nExchangeLocation      : {}",
+      "exit_code": 0,
+      "duration_ms": 1600
+    },
+    {
+      "command": "Get-ComplianceTag | FL Name,RetentionAction,IsRecordLabel,RetentionDuration",
+      "command_pattern": "get-compliancetag",
+      "output": "Name              : Legal Record\nRetentionAction   : KeepAndDelete\nIsRecordLabel     : True\nRetentionDuration : 2555",
+      "exit_code": 0,
+      "duration_ms": 1400
+    },
+    {
+      "command": "Get-MailboxStatistics -Identity john.doe@contoso.com",
+      "command_pattern": "get-mailboxstatistics.*john",
+      "output": "DisplayName  : John Doe\nItemCount    : 34221\nTotalItemSize : 12.4 GB (13,314,398,208 bytes)\nLastLogonTime : 11/14/2025 3:42:18 PM",
+      "exit_code": 0,
+      "duration_ms": 1500
+    },
+    {
+      "command": "Get-AdaptiveScope \"Legal Department Scope\" | FL FilterConditions,LocationCount",
+      "command_pattern": "get-adaptivescope.*legal",
+      "output": "FilterConditions : (Department -eq \"Legal\")\nLocationCount    : 125",
+      "exit_code": 0,
+      "duration_ms": 1300
+    }
+  ]
+}

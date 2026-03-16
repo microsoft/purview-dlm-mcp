@@ -1,0 +1,33 @@
+id: items-not-moving-to-archive-basic-01
+tsg: items-not-moving-to-archive
+difficulty: basic
+symptom: >
+  User has archive mailbox enabled but nothing is moving to it.
+  The archive has been active for a week and only has 12 items.
+  Primary mailbox is over 40GB.
+symptom_variants:
+  - "Archive enabled but items won't move"
+  - "Online archive is empty, primary mailbox keeps growing"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-Mailbox -Identity jane.smith@contoso.com | Format-List ArchiveStatus, ArchiveState, RetentionPolicy, AutoExpandingArchiveEnabled"
+  - tool: run_powershell
+    command: "Get-MailboxStatistics -Identity jane.smith@contoso.com -Archive"
+  - tool: run_powershell
+    command: "Export-MailboxDiagnosticLogs -Identity jane.smith@contoso.com -ComponentName MRM"
+ground_truth:
+  root_cause: "MFA (Managed Folder Assistant) has not yet processed this mailbox — ELCLastSuccessTimestamp is empty and ArchivedItemCount is 0"
+  root_cause_category: timing
+  supporting_evidence:
+    - "ArchiveStatus is Active"
+    - "ELCLastSuccessTimestamp is empty"
+    - "ELCLastRunArchivedItemCount is 0"
+  remediation_steps:
+    - "Verify retention policy with archive tag is assigned"
+    - "Wait for MFA to process (runs approximately every 7 days)"
+    - "Check if Default MRM Policy archive tag has correct age threshold"
+  remediation_risk: low
+  common_misdiagnoses:
+    - "Archive mailbox is broken"
+    - "Need to manually move items"
+fixtures: archive-states/archive-enabled-not-moving.json

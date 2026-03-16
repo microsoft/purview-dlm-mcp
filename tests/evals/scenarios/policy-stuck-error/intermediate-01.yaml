@@ -1,0 +1,39 @@
+id: policy-stuck-error-intermediate-01
+tsg: policy-stuck-error
+difficulty: intermediate
+symptom: >
+  Three retention policies showing errors in compliance portal after tenant migration.
+  Some show PolicySyncTimeout, one shows FailedToOpenContainer.
+symptom_variants:
+  - "Multiple retention policies in error state after migration"
+  - "Compliance portal showing distribution errors on several policies"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy -DistributionDetail | Format-List Name, DistributionStatus, DistributionResults, Enabled"
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy \"Finance Records 7Y\" | Format-List ExchangeLocation, ExchangeLocationException"
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy \"APAC Adaptive Retention\" | Format-List AdaptiveScopeLocation"
+    optional: true
+  - tool: run_powershell
+    command: "Get-AdaptiveScope \"APAC Users Scope\" | Format-List Name, FilterConditions, LocationType"
+    optional: true
+ground_truth:
+  root_cause: "Three separate distribution failures with different root causes: (1) 'Post-Migration Retention 1Y' has transient PolicySyncTimeout - will auto-resolve on retry, (2) 'Finance Records 7Y' references deleted mailbox user.deleted@contoso.com in ExchangeLocation causing FailedToOpenContainer, (3) 'APAC Adaptive Retention' uses adaptive scope with unsupported attribute customAttribute7"
+  root_cause_category: sync
+  supporting_evidence:
+    - "PolicySyncTimeout on Post-Migration policy is transient"
+    - "FailedToOpenContainer specifically references user.deleted@contoso.com"
+    - "AdaptiveScope filter uses customAttribute7 which is not a supported filterable attribute"
+    - "Each policy has a distinct failure requiring different remediation"
+  remediation_steps:
+    - "Post-Migration Retention 1Y: Wait 24-48 hours for automatic retry or run Set-RetentionCompliancePolicy to force redistribution"
+    - "Finance Records 7Y: Remove deleted mailbox user.deleted@contoso.com from ExchangeLocation"
+    - "APAC Adaptive Retention: Update adaptive scope filter to use a supported attribute (e.g., Department, Office, CustomAttribute1-15 via EXO)"
+    - "Re-run Get-RetentionCompliancePolicy -DistributionDetail after each fix to verify"
+  remediation_risk: medium
+  common_misdiagnoses:
+    - "All three policies have the same root cause"
+    - "Policies need to be recreated after migration"
+    - "This is a tenant migration bug that Microsoft needs to fix"
+fixtures: policy-states/multi-policy-distribution-failure.json

@@ -1,0 +1,30 @@
+id: adaptive-scope-basic-01
+tsg: adaptive-scope
+difficulty: intermediate
+symptom: >
+  Adaptive scope targeting department=Finance is including users
+  from Marketing. The scope query looks correct but wrong users
+  are being targeted.
+symptom_variants:
+  - "Adaptive scope membership is wrong"
+  - "Wrong users in scope despite correct query"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-AdaptiveScope | Format-List Name, *Filter*, *Status*"
+  - tool: run_powershell
+    command: "Get-Mailbox -Identity marketing-user@contoso.com | Format-List Department, CustomAttribute*"
+ground_truth:
+  root_cause: "Users have incorrect Department attribute in Azure AD — the scope query is correct but the underlying user data is wrong"
+  root_cause_category: configuration
+  supporting_evidence:
+    - "Adaptive scope filter targets Department -eq Finance"
+    - "Marketing user has Department set to Finance in AD"
+  remediation_steps:
+    - "Audit Department attribute values in Azure AD"
+    - "Correct user attributes via Azure AD or HR sync"
+    - "Wait for scope refresh after attribute correction"
+  remediation_risk: low
+  common_misdiagnoses:
+    - "Adaptive scope query syntax is wrong"
+    - "Purview scope engine has a bug"
+fixtures: compliance-states/adaptive-scope-wrong-members.json

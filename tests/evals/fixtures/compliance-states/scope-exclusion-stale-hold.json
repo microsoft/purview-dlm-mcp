@@ -1,0 +1,48 @@
+{
+  "name": "scope-exclusion-stale-hold",
+  "description": "Users excluded from adaptive scope 3 weeks ago but hold GUIDs persist on InPlaceHolds",
+  "commands": [
+    {
+      "command": "Get-RetentionCompliancePolicy \"Global Retention 5Y\" | Format-List Name, Guid, Enabled, AdaptiveScopeLocation, DistributionStatus",
+      "command_pattern": "get-retentioncompliancepolicy.*global",
+      "output": "Name                  : Global Retention 5Y\nGuid                  : a1b2c3d4-e5f6-7890-abcd-ef1234567890\nEnabled               : True\nAdaptiveScopeLocation : {All Employees Scope}\nDistributionStatus    : Success",
+      "exit_code": 0,
+      "duration_ms": 1500
+    },
+    {
+      "command": "Get-AdaptiveScope \"All Employees Scope\" | Format-List Name, FilterConditions, LocationCount",
+      "command_pattern": "get-adaptivescope.*all.employees",
+      "output": "Name              : All Employees Scope\nFilterConditions  : (Department -ne \"Contractors\")\nLocationCount     : 4850",
+      "exit_code": 0,
+      "duration_ms": 1400
+    },
+    {
+      "command": "Get-Mailbox -Identity contractor1@contoso.com | Format-List InPlaceHolds, DelayHoldApplied, DelayReleaseHoldApplied",
+      "command_pattern": "get-mailbox.*contractor1",
+      "output": "InPlaceHolds            : {UniHa1b2c3d4-e5f6-7890-abcd-ef1234567890}\nDelayHoldApplied        : False\nDelayReleaseHoldApplied : False",
+      "exit_code": 0,
+      "duration_ms": 1300
+    },
+    {
+      "command": "Get-Mailbox -Identity contractor2@contoso.com | Format-List InPlaceHolds, DelayHoldApplied, AccountDisabled",
+      "command_pattern": "get-mailbox.*contractor2",
+      "output": "InPlaceHolds            : {UniHa1b2c3d4-e5f6-7890-abcd-ef1234567890}\nDelayHoldApplied        : False\nAccountDisabled         : True",
+      "exit_code": 0,
+      "duration_ms": 1300
+    },
+    {
+      "command": "Get-MailboxFolderStatistics -Identity contractor1@contoso.com -FolderScope RecoverableItems",
+      "command_pattern": "get-mailboxfolderstatistics.*contractor1.*recoverableitems",
+      "output": "Name                  : Recoverable Items\nFolderSize            : 8.7 GB (9,341,632,512 bytes)\nItemsInFolder         : 23,450\nFolderType            : RecoverableItems\n\nName                  : SubstrateHolds\nFolderSize            : 8.4 GB (9,019,431,936 bytes)\nItemsInFolder         : 22,100\nFolderType            : RecoverableItems",
+      "exit_code": 0,
+      "duration_ms": 1800
+    },
+    {
+      "command": "Get-RetentionCompliancePolicy -DistributionDetail \"Global Retention 5Y\" | Format-List DistributionStatus, LastStatusUpdateTime",
+      "command_pattern": "get-retentioncompliancepolicy.*distributiondetail.*global",
+      "output": "DistributionStatus    : Success\nLastStatusUpdateTime  : 03/14/2026 09:00:00 AM",
+      "exit_code": 0,
+      "duration_ms": 1500
+    }
+  ]
+}

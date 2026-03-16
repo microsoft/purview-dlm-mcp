@@ -1,0 +1,9 @@
+{
+  "name": "sharepoint-retention-block",
+  "description": "SharePoint site blocked from deletion by retention policy",
+  "commands": [
+    { "command": "Get-RetentionCompliancePolicy", "command_pattern": "get-retentioncompliancepolicy(?!.*rule)(?!.*distributiondetail)", "output": "Name: Enterprise SharePoint Retention\nSharePointLocation: All\nSharePointLocationException: {}\nDistributionStatus: Success", "exit_code": 0 },
+    { "command": "Get-RetentionComplianceRule", "command_pattern": "get-retentioncompliancerule", "output": "Name: Enterprise SharePoint Rule\nPolicy: Enterprise SharePoint Retention\nRetentionDuration: 1825\nRetentionComplianceAction: KeepAndDelete\nEnabled: True", "exit_code": 0 },
+    { "command": "Get-RetentionCompliancePolicy -DistributionDetail", "command_pattern": "get-retentioncompliancepolicy.*distributiondetail", "output": "Name: Enterprise SharePoint Retention\nDistributionStatus: Success\nDistributionResults: {SharePoint: Success, OneDrive: Success}", "exit_code": 0 }
+  ]
+}

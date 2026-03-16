@@ -16,8 +16,13 @@
     "format": "prettier --check src/ tests/",
     "format:fix": "prettier --write src/ tests/",
     "test": "vitest run",
+    "test:eval": "vitest run --config vitest.eval.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "test:all": "vitest run && vitest run --config vitest.e2e.config.ts",
+    "test:all": "vitest run && vitest run --config vitest.eval.config.ts && vitest run --config vitest.e2e.config.ts",
+    "eval": "tsx tests/evals/runner.ts",
+    "eval:security": "tsx tests/evals/runner.ts --layer security",
+    "eval:tool": "tsx tests/evals/runner.ts --layer tool-selection",
+    "eval:full": "tsx tests/evals/runner.ts --layer tool-selection --layer diagnostic-accuracy --layer security",
     "prepublishOnly": "npm run build"
   },
   "files": [
@@ -49,11 +54,13 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
+    "@github/copilot-sdk": "^0.1.32",
     "@types/node": "^22.13.10",
     "eslint": "^9.22.0",
     "prettier": "^3.5.3",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.27.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "yaml": "^2.8.2"
   }
 }

@@ -11,6 +11,7 @@ dist/
 !eslint.config.mjs
 !vitest.config.ts
 !vitest.e2e.config.ts
+!vitest.eval.config.ts
 
 # ─── Test output ───
 test-results/
@@ -26,6 +27,11 @@ test-results/
 # ─── OS files ───
 .DS_Store
 Thumbs.db
+
+# ─── Eval run outputs ───
+eval-*.json
+eval-*.log.jsonl
+eval-run.log.jsonl
 
 # ─── npm pack output ───
 *.tgz

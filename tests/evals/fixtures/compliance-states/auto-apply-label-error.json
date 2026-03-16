@@ -1,0 +1,10 @@
+{
+  "name": "auto-apply-label-error",
+  "description": "Auto-apply label policy in error state",
+  "commands": [
+    { "command": "Get-RetentionCompliancePolicy", "command_pattern": "get-retentioncompliancepolicy(?!.*rule)", "output": "Name: Auto-Label Financial Docs\nDistributionStatus: Error\nMode: Enforce\nEnabled: False", "exit_code": 0 },
+    { "command": "Get-ComplianceTag", "command_pattern": "get-compliancetag", "output": "Name: Financial Record\nRetentionAction: KeepAndDelete\nRetentionDuration: 2555\nIsRecordLabel: False", "exit_code": 0 },
+    { "command": "Get-RetentionComplianceRule -Policy \"Auto-Label Financial Docs\"", "command_pattern": "get-retentioncompliancerule", "output": "Name: Auto-Label Financial Rule\nPolicy: Auto-Label Financial Docs\nContentMatchQuery: Finance OR Financial OR Invoice\nRetentionDuration: 2555\nRetentionComplianceAction: KeepAndDelete\nEnabled: True", "exit_code": 0 },
+    { "command": "Get-RetentionCompliancePolicy -Type ApplyTag | Measure-Object", "command_pattern": "measure-object|get-retentioncompliancepolicy.*applytag", "output": "Count    : 3\nAverage  :\nSum      :\nMaximum  :\nMinimum  :\nProperty :", "exit_code": 0 }
+  ]
+}

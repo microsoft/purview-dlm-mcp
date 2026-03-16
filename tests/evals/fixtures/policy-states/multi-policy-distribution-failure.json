@@ -1,0 +1,41 @@
+{
+  "name": "multi-policy-distribution-failure",
+  "description": "Three retention policies with different distribution failures: timeout, deleted mailbox, adaptive scope error",
+  "commands": [
+    {
+      "command": "Get-RetentionCompliancePolicy -DistributionDetail | Format-List Name, DistributionStatus, DistributionResults, Enabled",
+      "command_pattern": "get-retentioncompliancepolicy.*distributiondetail",
+      "output": "Name                : Post-Migration Retention 1Y\nDistributionStatus  : RetryDistribution\nDistributionResults : {Exchange: PolicySyncTimeout, SharePoint: Success, OneDrive: Success}\nEnabled             : True\n\nName                : Finance Records 7Y\nDistributionStatus  : Error\nDistributionResults : {Exchange: FailedToOpenContainer - The mailbox 'user.deleted@contoso.com' doesn't exist or has been deleted.}\nEnabled             : True\n\nName                : APAC Adaptive Retention\nDistributionStatus  : Error\nDistributionResults : {Exchange: The AdaptiveScope query returned an error: Attribute 'customAttribute7' is not supported for the selected scope type.}\nEnabled             : True",
+      "exit_code": 0,
+      "duration_ms": 3200
+    },
+    {
+      "command": "Get-RetentionCompliancePolicy \"Post-Migration Retention 1Y\" | Format-List ExchangeLocation, SharePointLocation, ModernGroupLocation",
+      "command_pattern": "get-retentioncompliancepolicy.*post-migration",
+      "output": "ExchangeLocation      : All\nSharePointLocation    : All\nModernGroupLocation   : {}",
+      "exit_code": 0,
+      "duration_ms": 1500
+    },
+    {
+      "command": "Get-RetentionCompliancePolicy \"Finance Records 7Y\" | Format-List ExchangeLocation, ExchangeLocationException",
+      "command_pattern": "get-retentioncompliancepolicy.*finance",
+      "output": "ExchangeLocation          : {finance-team@contoso.com, user.deleted@contoso.com, accounting@contoso.com}\nExchangeLocationException : {}",
+      "exit_code": 0,
+      "duration_ms": 1400
+    },
+    {
+      "command": "Get-RetentionCompliancePolicy \"APAC Adaptive Retention\" | Format-List AdaptiveScopeLocation",
+      "command_pattern": "get-retentioncompliancepolicy.*apac",
+      "output": "AdaptiveScopeLocation : {APAC Users Scope}",
+      "exit_code": 0,
+      "duration_ms": 1300
+    },
+    {
+      "command": "Get-AdaptiveScope \"APAC Users Scope\" | Format-List Name, FilterConditions, LocationType",
+      "command_pattern": "get-adaptivescope.*apac",
+      "output": "Name              : APAC Users Scope\nFilterConditions  : (customAttribute7 -eq \"APAC\")\nLocationType      : User",
+      "exit_code": 0,
+      "duration_ms": 1600
+    }
+  ]
+}

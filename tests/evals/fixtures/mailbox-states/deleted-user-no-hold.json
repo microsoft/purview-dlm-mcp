@@ -1,0 +1,9 @@
+{
+  "name": "deleted-user-no-hold",
+  "description": "User deleted, no hold — mailbox purged",
+  "commands": [
+    { "command": "Get-Mailbox -InactiveMailboxOnly -Identity user@contoso.com", "command_pattern": "get-mailbox.*inactivemailboxonly", "output": "WARNING: No inactive mailbox found for user@contoso.com", "exit_code": 1 },
+    { "command": "Get-Mailbox -SoftDeletedMailbox -Identity user@contoso.com", "command_pattern": "get-mailbox.*softdeletedmailbox", "output": "WARNING: No soft-deleted mailbox found for user@contoso.com", "exit_code": 1 },
+    { "command": "Get-RetentionCompliancePolicy | Format-List Name, Enabled, Mode, ExchangeLocation", "command_pattern": "get-retentioncompliancepolicy", "output": "Name: Default Retention Policy\nEnabled: True\nMode: Enforce\nExchangeLocation: All", "exit_code": 0 }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "teams-retention-active",
+  "description": "Teams retention policy active and distributed",
+  "commands": [
+    { "command": "Get-RetentionCompliancePolicy", "command_pattern": "get-retentioncompliancepolicy(?!.*rule)", "output": "Name: Teams 1-Year Retention\nTeamsChannelLocation: All\nDistributionStatus: Success\nEnabled: True", "exit_code": 0 },
+    { "command": "Get-RetentionComplianceRule", "command_pattern": "get-retentioncompliancerule", "output": "Name: Teams 1-Year Rule\nRetentionDuration: 365\nRetentionComplianceAction: Delete", "exit_code": 0 },
+    { "command": "Get-MailboxFolderStatistics -Identity user@contoso.com -FolderScope RecoverableItems", "command_pattern": "get-mailboxfolderstatistics.*recoverableitems", "output": "Name: TeamsMessagesData\nFolderSize: 2.1 GB\nItemsInFolder: 34521\n\nName: SubstrateHolds\nFolderSize: 1.5 GB\nItemsInFolder: 22100", "exit_code": 0 },
+    { "command": "Get-Mailbox -Identity user@contoso.com | Format-List LitigationHoldEnabled, ComplianceTagHoldApplied, InPlaceHolds", "command_pattern": "get-mailbox.*-identity", "output": "LitigationHoldEnabled: False\nComplianceTagHoldApplied: False\nInPlaceHolds: {mbxteams1yr:2}", "exit_code": 0 }
+  ]
+}

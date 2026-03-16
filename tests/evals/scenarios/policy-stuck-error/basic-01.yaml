@@ -1,0 +1,33 @@
+id: policy-stuck-error-basic-01
+tsg: policy-stuck-error
+difficulty: basic
+symptom: >
+  Our retention policy status shows PolicySyncTimeout in the compliance portal.
+  It was working fine last month but now shows Error.
+symptom_variants:
+  - "Retention policy stuck in error state"
+  - "Policy shows PolicySyncTimeout, content not being retained"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy | Format-List Name, *Status*, Enabled"
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy -DistributionDetail"
+  - tool: run_powershell
+    command: "Get-RetentionComplianceRule"
+    optional: true
+ground_truth:
+  root_cause: "PolicySyncTimeout on Exchange workload — the policy failed to sync to Exchange Online while other workloads succeeded"
+  root_cause_category: sync
+  supporting_evidence:
+    - "DistributionStatus is Error"
+    - "DistributionDetail shows PolicySyncTimeout"
+    - "DistributionResults shows Exchange: PolicySyncTimeout, others: Success"
+  remediation_steps:
+    - "Make a minor edit to the policy to trigger redistribution"
+    - "Wait 24 hours for redistribution to complete"
+    - "If still failing, open a support case with Microsoft"
+  remediation_risk: low
+  common_misdiagnoses:
+    - "Policy needs to be deleted and recreated"
+    - "Exchange Online is down"
+fixtures: policy-states/policy-sync-timeout.json

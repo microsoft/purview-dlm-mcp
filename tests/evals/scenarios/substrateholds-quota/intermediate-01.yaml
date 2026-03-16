@@ -1,0 +1,39 @@
+id: substrateholds-quota-intermediate-01
+tsg: substrateholds-quota
+difficulty: intermediate
+symptom: >
+  User keeps getting quota warnings. Recoverable Items at 95%.
+  We already removed the litigation hold but problem persists.
+symptom_variants:
+  - "Recoverable Items growing despite removing litigation hold"
+  - "SubstrateHolds folder huge after lit hold removal"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-Mailbox -Identity maria.garcia@contoso.com | Format-List InPlaceHolds, DelayHoldApplied, LitigationHoldEnabled, ComplianceTagHoldApplied"
+  - tool: run_powershell
+    command: "Get-MailboxFolderStatistics -Identity maria.garcia@contoso.com -FolderScope RecoverableItems"
+  - tool: run_powershell
+    command: "Get-ComplianceCase"
+    optional: true
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy | Format-List Name, Guid, Enabled"
+    optional: true
+ground_truth:
+  root_cause: "Three layered holds blocking Recoverable Items cleanup: (1) DelayHoldApplied=True from recently removed litigation hold (~30 day expiry), (2) eDiscovery case hold 'Legal Investigation 2025' still active (InPlaceHolds GUID matches), (3) ComplianceTagHoldApplied=True from retention labels marking items as records"
+  root_cause_category: conflict
+  supporting_evidence:
+    - "DelayHoldApplied=True indicates removed hold still in delay period"
+    - "InPlaceHolds contains GUID matching 'GDPR 7-Year Retention' policy"
+    - "ComplianceTagHoldApplied=True means retention labels with hold action exist on items"
+    - "SubstrateHolds at 92.1 GB consuming nearly all Recoverable Items quota"
+  remediation_steps:
+    - "Wait for delay hold to expire (~30 days) OR contact Support for early removal"
+    - "Evaluate whether eDiscovery case 'Legal Investigation 2025' still needs this user"
+    - "Review ComplianceTagHold - identify which retention labels are applied to items"
+    - "Consider requesting quota increase if all holds are legitimately required"
+  remediation_risk: medium
+  common_misdiagnoses:
+    - "Only the litigation hold was causing the problem"
+    - "Recoverable Items quota needs to be increased (treats symptom not cause)"
+    - "MFA is not cleaning up items"
+fixtures: mailbox-states/multiple-holds-layered.json

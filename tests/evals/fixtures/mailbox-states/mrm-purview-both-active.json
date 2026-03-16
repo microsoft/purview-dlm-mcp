@@ -1,0 +1,11 @@
+{
+  "name": "mrm-purview-both-active",
+  "description": "Both MRM and Purview retention active on mailbox",
+  "commands": [
+    { "command": "Get-Mailbox -Identity user@contoso.com", "command_pattern": "get-mailbox.*-identity.*user", "output": "RetentionPolicy: Corp 30-Day Delete\nInPlaceHolds: {mbx7yearhold:2}", "exit_code": 0 },
+    { "command": "Get-RetentionCompliancePolicy", "command_pattern": "get-retentioncompliancepolicy", "output": "Name: 7-Year Corporate Retention\nExchangeLocation: All\nDistributionStatus: Success", "exit_code": 0 },
+    { "command": "Get-RetentionPolicy", "command_pattern": "get-retentionpolicy(?!tag)", "output": "Name: Corp 30-Day Delete\nRetentionPolicyTagLinks: {30-Day Delete and Allow Recovery}", "exit_code": 0 },
+    { "command": "Get-RetentionPolicyTag | Format-List Name, RetentionAction, AgeLimitForRetention, RetentionEnabled", "command_pattern": "get-retentionpolicytag", "output": "Name: 30-Day Delete and Allow Recovery\nRetentionAction: DeleteAndAllowRecovery\nAgeLimitForRetention: 30.00:00:00\nRetentionEnabled: True", "exit_code": 0 },
+    { "command": "Export-MailboxDiagnosticLogs -Identity user@contoso.com -ComponentName MRM", "command_pattern": "export-mailboxdiagnosticlogs.*mrm", "output": "MailboxLog : <?xml version=\"1.0\"?><Properties><MailboxTable><Property><n>ELCLastSuccessTimestamp</n><Value>2026-03-10T08:30:00Z</Value></Property><Property><n>ELCLastRunDeletedFromRootItemCount</n><Value>150</Value></Property></MailboxTable></Properties>", "exit_code": 0 }
+  ]
+}

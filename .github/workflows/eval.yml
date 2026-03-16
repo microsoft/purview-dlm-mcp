@@ -1,0 +1,213 @@
+name: MCP Eval Suite
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/evals/**'
+      - '.github/skills/**'
+      - '.claude/skills/**'
+  workflow_dispatch:
+    inputs:
+      log_level:
+        description: 'Log verbosity (0-3)'
+        default: '2'
+      judge_model:
+        description: 'Judge model'
+        default: 'claude-opus-4-6'
+
+jobs:
+  security-tests:
+    name: Security (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npx vitest run --config vitest.eval.config.ts tests/evals/security/
+
+  eval-deterministic:
+    name: Deterministic Scoring
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: |
+          npx tsx tests/evals/runner.ts \
+            --layer tool-selection \
+            --layer security \
+            --report markdown \
+            --out eval-report.md \
+            --log-level ${{ inputs.log_level || '1' }}
+      - name: Post PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('eval-report.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: |
+            eval-report.md
+            eval-run.log.jsonl
+
+  eval-llm-judge:
+    name: LLM Judge (${{ inputs.judge_model || 'claude-opus-4-6' }})
+    runs-on: ubuntu-latest
+    needs: security-tests
+    # Only run on manual dispatch or when explicitly labeled
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'run-llm-eval')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm install @github/copilot-sdk
+      - run: |
+          npx tsx tests/evals/runner.ts \
+            --layer tool-selection \
+            --layer diagnostic-accuracy \
+            --layer security \
+            --judge-model ${{ inputs.judge_model || 'claude-opus-4-6' }} \
+            --shuffle 3 \
+            --report json \
+            --out eval-results.json \
+            --log-level ${{ inputs.log_level || '2' }}
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-llm
+          path: |
+            eval-results.json
+            eval-run.log.jsonl
+
+  eval-agent:
+    name: Agent Eval (${{ matrix.agent_model }})
+    runs-on: ubuntu-latest
+    needs: security-tests
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || contains(github.event.pull_request.labels.*.name, 'run-agent-eval')
+    strategy:
+      fail-fast: false
+      matrix:
+        agent_model:
+          - claude-sonnet-4-6
+          - claude-opus-4-6
+          - gpt-5.2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm install @github/copilot-sdk
+      - run: |
+          npx tsx tests/evals/runner.ts \
+            --mode agent \
+            --agent-model ${{ matrix.agent_model }} \
+            --max-turns 15 \
+            --layer tool-selection \
+            --layer diagnostic-accuracy \
+            --layer security \
+            --judge-model ${{ inputs.judge_model || 'claude-opus-4-6' }} \
+            --shuffle 3 \
+            --report json \
+            --out eval-agent-results.json \
+            --log-level ${{ inputs.log_level || '2' }}
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-agent-results-${{ matrix.agent_model }}
+          path: |
+            eval-agent-results.json
+            eval-run.log.jsonl
+
+  eval-summary:
+    name: Eval Summary
+    runs-on: ubuntu-latest
+    needs: eval-agent
+    if: always() && needs.eval-agent.result != 'skipped'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: eval-agent-results-*
+          merge-multiple: false
+      - name: Generate summary
+        run: |
+          node -e "
+          const fs = require('fs');
+          const path = require('path');
+
+          // Find all result files from matrix artifacts
+          const dirs = fs.readdirSync('.').filter(d => d.startsWith('eval-agent-results-'));
+          const allResults = [];
+
+          for (const dir of dirs) {
+            const fp = path.join(dir, 'eval-agent-results.json');
+            if (!fs.existsSync(fp)) continue;
+            const report = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+            const model = report.config?.agent_model ?? dir.replace('eval-agent-results-', '');
+            for (const results of Object.values(report.results_by_tsg)) {
+              for (const r of results) {
+                allResults.push({
+                  scenario: r.scenario_id,
+                  tsg: r.tsg,
+                  model,
+                  tool: r.tool_selection.weighted_total,
+                  diag: r.diagnostic.weighted_total,
+                });
+              }
+            }
+          }
+
+          // Build markdown table: Scenario | TSG | Model | Tool | Diag
+          const lines = [
+            '## Agent Eval Summary',
+            '',
+            '| Scenario | TSG | Model | Tool Selection | Diagnostic Accuracy |',
+            '|----------|-----|-------|---------------|-------------------|',
+          ];
+          allResults.sort((a, b) => a.scenario.localeCompare(b.scenario) || a.model.localeCompare(b.model));
+          for (const r of allResults) {
+            const t = (r.tool * 100).toFixed(1) + '%';
+            const d = (r.diag * 100).toFixed(1) + '%';
+            lines.push('| ' + [r.scenario, r.tsg, r.model, t, d].join(' | ') + ' |');
+          }
+
+          // Add per-model averages
+          const models = [...new Set(allResults.map(r => r.model))];
+          lines.push('', '### Model Averages', '', '| Model | Avg Tool | Avg Diagnostic | Scenarios |', '|-------|----------|---------------|-----------|');
+          for (const m of models) {
+            const mr = allResults.filter(r => r.model === m);
+            const at = (mr.reduce((s, r) => s + r.tool, 0) / mr.length * 100).toFixed(1) + '%';
+            const ad = (mr.reduce((s, r) => s + r.diag, 0) / mr.length * 100).toFixed(1) + '%';
+            lines.push('| ' + [m, at, ad, mr.length].join(' | ') + ' |');
+          }
+
+          const md = lines.join('\n');
+          fs.writeFileSync('eval-summary.md', md);
+          console.log(md);
+          "
+      - name: Post summary to GitHub Actions
+        run: cat eval-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-summary
+          path: eval-summary.md

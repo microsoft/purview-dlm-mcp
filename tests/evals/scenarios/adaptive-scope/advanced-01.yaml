@@ -1,0 +1,43 @@
+id: adaptive-scope-advanced-01
+tsg: adaptive-scope
+difficulty: advanced
+symptom: >
+  We excluded 50 users from our adaptive scope retention policy 3 weeks ago
+  but they're still showing as scoped. One disabled mailbox shows FailedToOpenContainer.
+symptom_variants:
+  - "Adaptive scope not removing excluded users"
+  - "Users still held after adaptive scope exclusion 3 weeks ago"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy \"Global Retention 5Y\" | Format-List Name, Guid, Enabled, AdaptiveScopeLocation, DistributionStatus"
+  - tool: run_powershell
+    command: "Get-AdaptiveScope \"All Employees Scope\" | Format-List Name, FilterConditions, LocationCount"
+  - tool: run_powershell
+    command: "Get-Mailbox -Identity contractor1@contoso.com | Format-List InPlaceHolds, DelayHoldApplied, DelayReleaseHoldApplied"
+  - tool: run_powershell
+    command: "Get-Mailbox -Identity contractor2@contoso.com | Format-List InPlaceHolds, DelayHoldApplied, AccountDisabled"
+    optional: true
+  - tool: run_powershell
+    command: "Get-MailboxFolderStatistics -Identity contractor1@contoso.com -FolderScope RecoverableItems"
+    optional: true
+ground_truth:
+  root_cause: "Stale hold stamps: Users were removed from adaptive scope membership but the hold GUID (UniHa1b2c3d4...) persists on their InPlaceHolds property. Hold stamp removal is a separate async process that can take 30+ days. The disabled mailbox (contractor2) cannot process hold removal at all because the mailbox is inactive/disabled."
+  root_cause_category: sync
+  supporting_evidence:
+    - "InPlaceHolds on contractor1 still contains the policy GUID despite scope exclusion"
+    - "Adaptive scope LocationCount dropped from 4900 to 4850 confirming exclusion processed"
+    - "DelayHoldApplied=False means this is not a delay hold - the original hold stamp simply hasn't been removed yet"
+    - "contractor2 has AccountDisabled=True preventing hold stamp cleanup"
+    - "3 weeks exceeds the 7-day scope refresh cycle indicating the scope updated but hold stamps didn't"
+  remediation_steps:
+    - "For active mailboxes: Wait up to 30 days for hold stamp removal to complete automatically"
+    - "For disabled/inactive mailbox (contractor2): Contact Microsoft Support as automated hold removal cannot process disabled mailboxes"
+    - "Monitor progress by checking InPlaceHolds periodically on affected users"
+    - "FailedToOpenContainer on contractor2 is expected - the container (mailbox) is disabled"
+  remediation_risk: low
+  common_misdiagnoses:
+    - "Adaptive scope is not refreshing properly"
+    - "Need to recreate the retention policy"
+    - "The scope filter is wrong"
+    - "This is a DelayHold issue (it's not - DelayHoldApplied=False)"
+fixtures: compliance-states/scope-exclusion-stale-hold.json

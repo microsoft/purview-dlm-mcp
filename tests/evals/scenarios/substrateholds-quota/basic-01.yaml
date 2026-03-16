@@ -1,0 +1,31 @@
+id: substrateholds-quota-basic-01
+tsg: substrateholds-quota
+difficulty: intermediate
+symptom: >
+  Recoverable Items folder is growing uncontrollably on several mailboxes.
+  SubstrateHolds folder is 80GB. Users getting quota warnings.
+symptom_variants:
+  - "Recoverable Items quota at 95%"
+  - "SubstrateHolds folder consuming all recoverable items space"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-MailboxFolderStatistics -Identity user@contoso.com -FolderScope RecoverableItems"
+  - tool: run_powershell
+    command: "Get-Mailbox -Identity user@contoso.com | Format-List InPlaceHolds, LitigationHoldEnabled"
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy | Format-List Name, *Status*"
+ground_truth:
+  root_cause: "Multiple overlapping holds (SubstrateHolds) preventing Recoverable Items cleanup — items accumulate without version pruning"
+  root_cause_category: quota
+  supporting_evidence:
+    - "SubstrateHolds folder at 80GB"
+    - "Multiple InPlaceHolds values present"
+  remediation_steps:
+    - "Identify which holds are necessary vs redundant"
+    - "Remove unnecessary holds to allow MFA cleanup"
+    - "Consider enabling auto-expanding archive for affected mailboxes"
+  remediation_risk: medium
+  common_misdiagnoses:
+    - "Exchange quota needs to be increased"
+    - "Users are hoarding deleted items"
+fixtures: mailbox-states/substrateholds-bloated.json

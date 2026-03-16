@@ -1,0 +1,36 @@
+id: items-not-moving-to-archive-intermediate-01
+tsg: items-not-moving-to-archive
+difficulty: intermediate
+symptom: >
+  Archive was working for months but suddenly items stopped moving.
+  Primary mailbox at 98%. We removed a retention policy 2 weeks ago.
+symptom_variants:
+  - "Archive stopped working after policy removal"
+  - "Items no longer archiving since we deleted a retention policy"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-Mailbox -Identity alex.chen@contoso.com | Format-List ArchiveStatus, ArchiveState, RetentionPolicy, AutoExpandingArchiveEnabled, InPlaceHolds, DelayHoldApplied, LitigationHoldEnabled, ComplianceTagHoldApplied"
+  - tool: run_powershell
+    command: "Export-MailboxDiagnosticLogs -Identity alex.chen@contoso.com -ComponentName MRM"
+  - tool: run_powershell
+    command: "Get-MailboxFolderStatistics -Identity alex.chen@contoso.com -FolderScope RecoverableItems"
+ground_truth:
+  root_cause: "DelayHoldApplied=True from recently removed retention policy blocks MFA archiving. The delay hold persists for ~30 days after hold removal, preventing archive moves and item deletion."
+  root_cause_category: conflict
+  supporting_evidence:
+    - "DelayHoldApplied is True despite no active holds in InPlaceHolds"
+    - "ELCLastRunArchivedItemCount is 0 despite recent MFA processing"
+    - "SubstrateHolds folder at 15.2GB indicates held items accumulating"
+    - "RetentionPolicy 'Default MRM Policy' and archive tags are correctly configured"
+  remediation_steps:
+    - "Wait for delay hold to expire naturally (~30 days from removal)"
+    - "Monitor SubstrateHolds folder size - should decrease after expiry"
+    - "If urgent, contact Microsoft Support to request delay hold removal"
+    - "Verify archive tag assignment is correct for when hold expires"
+  remediation_risk: low
+  common_misdiagnoses:
+    - "Archive mailbox is full or broken"
+    - "MFA is not running"
+    - "Retention policy is misconfigured"
+    - "Need to re-assign archive tags"
+fixtures: archive-states/delay-hold-blocking-archive.json

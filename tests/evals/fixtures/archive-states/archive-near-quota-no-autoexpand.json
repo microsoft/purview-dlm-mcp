@@ -1,0 +1,11 @@
+{
+  "name": "archive-near-quota-no-autoexpand",
+  "description": "Archive at 98GB, auto-expanding disabled",
+  "commands": [
+    { "command": "Get-Mailbox -Identity bob.jones@contoso.com", "command_pattern": "get-mailbox.*bob", "output": "ArchiveStatus: Active\nAutoExpandingArchiveEnabled: False\nArchiveQuota: 100 GB (107,374,182,400 bytes)", "exit_code": 0 },
+    { "command": "Get-MailboxStatistics -Identity bob.jones@contoso.com -Archive", "command_pattern": "get-mailboxstatistics.*bob.*-archive", "output": "DisplayName: In-Place Archive - Bob Jones\nItemCount: 124567\nTotalItemSize: 98.5 GB (105,764,607,795 bytes)", "exit_code": 0 },
+    { "command": "Get-OrganizationConfig | Format-List AutoExpandingArchiveEnabled", "command_pattern": "get-organizationconfig.*autoexpanding", "output": "AutoExpandingArchiveEnabled : False", "exit_code": 0 },
+    { "command": "Get-Mailbox -Identity bob.jones@contoso.com | Format-List MailboxLocations", "command_pattern": "get-mailbox.*bob.*mailboxlocations", "output": "MailboxLocations : {1;Primary;1234-5678;Primary;guid;False, 1;AuxArchive;;guid;False}", "exit_code": 0 },
+    { "command": "Test-ArchiveConnectivity -UserSmtp bob.jones@contoso.com", "command_pattern": "test-archiveconnectivity", "output": "RunspaceId: abc-123\nResult: Succeeded\nArchiveDatabase: NAMPR01DG123-db045", "exit_code": 0 }
+  ]
+}

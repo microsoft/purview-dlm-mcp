@@ -1,0 +1,42 @@
+id: items-not-moving-to-archive-intermediate-02
+tsg: items-not-moving-to-archive
+difficulty: intermediate
+symptom: >
+  Archive works for most folders but Notes folder is 15GB and nothing moves. We applied a
+  6-month personal archive tag to Notes but it's been months.
+symptom_variants:
+  - "Notes folder not archiving despite personal tag"
+  - "Archive works everywhere except Notes folder"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-Mailbox -Identity sarah.kim@contoso.com | Format-List ArchiveStatus, ArchiveState, RetentionPolicy, AutoExpandingArchiveEnabled"
+  - tool: run_powershell
+    command: "Get-MailboxFolderStatistics -Identity sarah.kim@contoso.com"
+  - tool: run_powershell
+    command: "Export-MailboxDiagnosticLogs -Identity sarah.kim@contoso.com -ComponentName MRM"
+  - tool: run_powershell
+    command: "Get-RetentionPolicyTag -Mailbox sarah.kim@contoso.com"
+    optional: true
+  - tool: run_powershell
+    command: "Get-MailboxStatistics -Identity sarah.kim@contoso.com -Archive"
+    optional: true
+ground_truth:
+  root_cause: "Notes folder has a known Exchange Online limitation: personal retention tags cannot be applied to it. Only a Default Policy Tag (DPT) with MoveToArchive action can archive items from the Notes folder. The 6-month personal archive tag the admin applied is silently ignored."
+  root_cause_category: workload
+  supporting_evidence:
+    - "Archive is Active and working for other folders (Inbox, Sent Items archived successfully)"
+    - "MRM logs show recent processing with ArchivedItemCount > 0 for other folders but 0 for Notes"
+    - "Archive mailbox folder statistics show Notes=0 items while other folders have items"
+    - "Personal retention tag '6 Month Archive' is assigned but ineffective on Notes folder"
+  remediation_steps:
+    - "Remove the personal archive tag from Notes folder (it has no effect)"
+    - "Ensure the assigned retention policy includes a DPT with MoveToArchive action"
+    - "The existing 'Default 2 year move to archive' DPT should apply to Notes - wait for next MFA cycle"
+    - "If faster archiving is needed for Notes, consider reducing the DPT age threshold"
+  remediation_risk: low
+  common_misdiagnoses:
+    - "Archive is broken or disabled"
+    - "MFA is not processing the mailbox"
+    - "The personal tag is misconfigured"
+    - "Need to manually move Notes items to archive"
+fixtures: archive-states/notes-folder-limitation.json

@@ -1,0 +1,35 @@
+id: retention-policy-not-applying-basic-01
+tsg: retention-policy-not-applying
+difficulty: basic
+symptom: >
+  We created a 7-year retention policy for Exchange mailboxes last Monday
+  but emails older than 7 years are still there. Policy shows Success.
+symptom_variants:
+  - "Retention policy isn't working on our Exchange mailboxes"
+  - "Old emails should be deleted by retention but they're still there"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy | Format-List Name, *Status*, Enabled"
+  - tool: run_powershell
+    command: "Get-RetentionComplianceRule | Format-List Name, RetentionDuration, *Action*"
+  - tool: run_powershell
+    command: "Get-Mailbox -Identity john.doe@contoso.com | Format-List RetentionPolicy, LitigationHoldEnabled, InPlaceHolds"
+  - tool: run_powershell
+    command: "Export-MailboxDiagnosticLogs -Identity john.doe@contoso.com -ComponentName MRM"
+    optional: true
+ground_truth:
+  root_cause: "Policy distribution delay — Purview retention policies take up to 7 days for initial distribution and MFA has not yet processed the mailbox"
+  root_cause_category: timing
+  supporting_evidence:
+    - "Policy WhenCreated within past 7 days"
+    - "ELCLastSuccessTimestamp is empty — MFA not yet run"
+    - "DistributionStatus Success but policy just created"
+  remediation_steps:
+    - "Wait up to 7 days for initial distribution"
+    - "Verify DistributionStatus remains Success"
+    - "Check MFA processing via Export-MailboxDiagnosticLogs"
+  remediation_risk: low
+  common_misdiagnoses:
+    - "Policy is broken or misconfigured"
+    - "Exchange server not processing retention"
+fixtures: policy-states/new-policy-pending-distribution.json

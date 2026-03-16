@@ -1,0 +1,48 @@
+{
+  "name": "retention-not-deleting-post-expiry",
+  "description": "1-year delete policy active for 2 years but items persist due to MRM personal tag override",
+  "commands": [
+    {
+      "command": "Get-RetentionCompliancePolicy \"Annual Cleanup Policy\" -DistributionDetail | FL Name,DistributionStatus,Enabled,CreatedDate,ExchangeLocation",
+      "command_pattern": "get-retentioncompliancepolicy.*annual.*distributiondetail",
+      "output": "Name               : Annual Cleanup Policy\nDistributionStatus : Success\nEnabled            : True\nCreatedDate        : 01/15/2024 9:00:00 AM\nExchangeLocation   : All",
+      "exit_code": 0,
+      "duration_ms": 2100
+    },
+    {
+      "command": "Get-RetentionComplianceRule \"Annual Cleanup Rule\" | FL RetentionDuration,RetentionDurationDisplayHint,RetentionComplianceAction",
+      "command_pattern": "get-retentioncompliancerule.*annual",
+      "output": "RetentionDuration            : 365\nRetentionDurationDisplayHint : Days\nRetentionComplianceAction    : Delete",
+      "exit_code": 0,
+      "duration_ms": 1700
+    },
+    {
+      "command": "Get-Mailbox -Identity finance.user@contoso.com | FL RetentionPolicy,AutoExpandingArchiveEnabled,InPlaceHolds,DelayHoldApplied,ComplianceTagHoldApplied",
+      "command_pattern": "get-mailbox.*finance",
+      "output": "RetentionPolicy              : Finance MRM Policy\nAutoExpandingArchiveEnabled   : True\nInPlaceHolds                 : {}\nDelayHoldApplied             : False\nComplianceTagHoldApplied     : False",
+      "exit_code": 0,
+      "duration_ms": 1500
+    },
+    {
+      "command": "Export-MailboxDiagnosticLogs -Identity finance.user@contoso.com -ComponentName MRM",
+      "command_pattern": "export-mailboxdiagnosticlogs.*finance.*mrm",
+      "output": "MailboxLog : <?xml version=\"1.0\"?><Properties><MailboxTable><Property><n>ELCLastSuccessTimestamp</n><Value>3/13/2026 8:15:00 AM</Value></Property><Property><n>ELCLastRunTotalProcessingTime</n><Value>42</Value></Property><Property><n>ELCLastRunArchivedItemCount</n><Value>142</Value></Property><Property><n>ELCLastRunDeletedFromRootItemCount</n><Value>0</Value></Property><Property><n>ELCLastRunDeletedFromDumpsterItemCount</n><Value>89</Value></Property></MailboxTable><FolderTable><Folder><n>Inbox</n><Tag>Never Delete (Personal)</Tag><ItemsInFolder>18422</ItemsInFolder><ItemsArchived>0</ItemsArchived><ItemsDeleted>0</ItemsDeleted></Folder><Folder><n>Sent Items</n><Tag>1 Year Delete (DPT)</Tag><ItemsInFolder>3200</ItemsInFolder><ItemsArchived>0</ItemsArchived><ItemsDeleted>89</ItemsDeleted></Folder></FolderTable></Properties>",
+      "exit_code": 0,
+      "duration_ms": 2800
+    },
+    {
+      "command": "Get-RetentionPolicyTag -Mailbox finance.user@contoso.com",
+      "command_pattern": "get-retentionpolicytag",
+      "output": "Name                : Never Delete\nType                : Personal\nRetentionAction     : DeleteAndAllowRecovery\nAgeLimitForRetention :\nRetentionEnabled    : False\nMessageClass        :\n\nName                : 1 Year Delete\nType                : All\nRetentionAction     : DeleteAndAllowRecovery\nAgeLimitForRetention : 365.00:00:00\nRetentionEnabled    : True\nMessageClass        :\n\nName                : Default 2 year move to archive\nType                : All\nRetentionAction     : MoveToArchive\nAgeLimitForRetention : 730.00:00:00\nRetentionEnabled    : True\nMessageClass        :",
+      "exit_code": 0,
+      "duration_ms": 1400
+    },
+    {
+      "command": "Get-MailboxFolderStatistics -Identity finance.user@contoso.com -FolderScope Inbox | Select Name,ItemsInFolder,FolderSize",
+      "command_pattern": "get-mailboxfolderstatistics.*finance.*inbox",
+      "output": "Name          : Inbox\nItemsInFolder : 18422\nFolderSize    : 22.5 GB (24,159,191,040 bytes)",
+      "exit_code": 0,
+      "duration_ms": 1600
+    }
+  ]
+}

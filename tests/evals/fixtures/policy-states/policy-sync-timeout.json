@@ -1,0 +1,30 @@
+{
+  "name": "policy-sync-timeout",
+  "description": "Retention policy stuck in PolicySyncTimeout error",
+  "commands": [
+    {
+      "command": "Get-RetentionCompliancePolicy | Format-List Name, *Status*, Enabled",
+      "command_pattern": "get-retentioncompliancepolicy",
+      "output": "Name                : Financial Records Retention\nEnabled             : True\nDistributionStatus  : Error\nDistributionDetail  : PolicySyncTimeout\nWhenCreated         : 01/15/2026 09:00:00 AM\nExchangeLocation    : All\nSharePointLocation  : All",
+      "exit_code": 0, "duration_ms": 2000
+    },
+    {
+      "command": "Get-RetentionCompliancePolicy -DistributionDetail",
+      "command_pattern": "get-retentioncompliancepolicy.*distributiondetail",
+      "output": "Name                : Financial Records Retention\nDistributionStatus  : Error\nDistributionResults : {SharePoint: Success, Exchange: PolicySyncTimeout, OneDrive: Success}",
+      "exit_code": 0, "duration_ms": 2200
+    },
+    {
+      "command": "Get-RetentionComplianceRule",
+      "command_pattern": "get-retentioncompliancerule",
+      "output": "Name                    : Financial Records Rule\nPolicy                  : Financial Records Retention\nRetentionDuration       : 1825\nRetentionComplianceAction : KeepAndDelete\nEnabled                 : True",
+      "exit_code": 0, "duration_ms": 1800
+    },
+    {
+      "command": "Get-Recipient -Filter \"(RecipientType -eq 'UserMailbox')\"",
+      "command_pattern": "get-recipient",
+      "output": "Name: User1\nRecipientType: UserMailbox\n\nName: User2\nRecipientType: UserMailbox\n\nName: User3\nRecipientType: UserMailbox",
+      "exit_code": 0, "duration_ms": 1500
+    }
+  ]
+}

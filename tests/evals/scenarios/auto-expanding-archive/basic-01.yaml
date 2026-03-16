@@ -1,0 +1,31 @@
+id: auto-expanding-archive-basic-01
+tsg: auto-expanding-archive
+difficulty: basic
+symptom: >
+  Archive mailbox is at 98GB and approaching the 100GB limit but
+  no auxiliary archive is being created.
+symptom_variants:
+  - "Archive full, auto-expanding not working"
+  - "Archive near 100GB quota, no aux archive"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-Mailbox -Identity bob.jones@contoso.com | Format-List ArchiveStatus, AutoExpandingArchiveEnabled, ArchiveQuota"
+  - tool: run_powershell
+    command: "Get-MailboxStatistics -Identity bob.jones@contoso.com -Archive"
+  - tool: run_powershell
+    command: "Get-OrganizationConfig | Format-List AutoExpandingArchiveEnabled"
+ground_truth:
+  root_cause: "AutoExpandingArchiveEnabled is False at both org and mailbox level — archive will hit 100GB hard limit"
+  root_cause_category: configuration
+  supporting_evidence:
+    - "AutoExpandingArchiveEnabled: False on mailbox"
+    - "AutoExpandingArchiveEnabled: False on org config"
+    - "Archive at 98.5GB of 100GB quota"
+  remediation_steps:
+    - "Enable auto-expanding archive at org level: Set-OrganizationConfig -AutoExpandingArchiveEnabled $true"
+    - "Wait for auxiliary archive provisioning (can take 24-48 hours)"
+  remediation_risk: low
+  common_misdiagnoses:
+    - "Archive is broken"
+    - "Need to increase archive quota manually"
+fixtures: archive-states/archive-near-quota-no-autoexpand.json

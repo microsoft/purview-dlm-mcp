@@ -1,0 +1,48 @@
+{
+  "name": "notes-folder-limitation",
+  "description": "Notes folder cannot have personal archive tags - only DPT MoveToArchive works",
+  "commands": [
+    {
+      "command": "Get-Mailbox -Identity sarah.kim@contoso.com | FL ArchiveStatus,ArchiveState,RetentionPolicy,AutoExpandingArchiveEnabled",
+      "command_pattern": "get-mailbox.*sarah",
+      "output": "ArchiveStatus               : Active\nArchiveState                : Local\nRetentionPolicy             : Custom Archive Policy\nAutoExpandingArchiveEnabled : True",
+      "exit_code": 0,
+      "duration_ms": 1500
+    },
+    {
+      "command": "Get-MailboxFolderStatistics -Identity sarah.kim@contoso.com | Select Name,ItemsInFolder,FolderSize",
+      "command_pattern": "get-mailboxfolderstatistics.*sarah(?!.*recoverableitems)",
+      "output": "Name          : Inbox\nItemsInFolder : 4520\nFolderSize    : 2.1 GB (2,254,857,830 bytes)\n\nName          : Sent Items\nItemsInFolder : 3850\nFolderSize    : 1.8 GB (1,932,735,283 bytes)\n\nName          : Calendar\nItemsInFolder : 1240\nFolderSize    : 245.6 MB (257,558,118 bytes)\n\nName          : Notes\nItemsInFolder : 82441\nFolderSize    : 15.2 GB (16,322,801,664 bytes)\n\nName          : Drafts\nItemsInFolder : 87\nFolderSize    : 42.3 MB (44,343,706 bytes)",
+      "exit_code": 0,
+      "duration_ms": 2100
+    },
+    {
+      "command": "Export-MailboxDiagnosticLogs -Identity sarah.kim@contoso.com -ComponentName MRM",
+      "command_pattern": "export-mailboxdiagnosticlogs.*sarah.*mrm",
+      "output": "MailboxLog : <?xml version=\"1.0\"?><Properties><MailboxTable><Property><n>ELCLastSuccessTimestamp</n><Value>3/12/2026 4:30:00 PM</Value></Property><Property><n>ELCLastRunTotalProcessingTime</n><Value>38</Value></Property><Property><n>ELCLastRunArchivedItemCount</n><Value>1245</Value></Property></MailboxTable><FolderTable><Folder><n>Inbox</n><Tag>6 Month Archive (Personal)</Tag><ItemsInFolder>4520</ItemsInFolder><ItemsArchived>312</ItemsArchived></Folder><Folder><n>Sent Items</n><Tag>6 Month Archive (Personal)</Tag><ItemsInFolder>3850</ItemsInFolder><ItemsArchived>287</ItemsArchived></Folder><Folder><n>Calendar</n><Tag>Default 2 year move to archive (DPT)</Tag><ItemsInFolder>1240</ItemsInFolder><ItemsArchived>646</ItemsArchived></Folder><Folder><n>Notes</n><Tag>6 Month Archive (Personal)</Tag><ItemsInFolder>82441</ItemsInFolder><ItemsArchived>0</ItemsArchived></Folder></FolderTable></Properties>",
+      "exit_code": 0,
+      "duration_ms": 2500
+    },
+    {
+      "command": "Get-RetentionPolicyTag -Mailbox sarah.kim@contoso.com",
+      "command_pattern": "get-retentionpolicytag",
+      "output": "Name                : 6 Month Archive\nType                : Personal\nRetentionAction     : MoveToArchive\nAgeLimitForRetention : 180.00:00:00\nRetentionEnabled    : True\nMessageClass        :\n\nName                : Default 2 year move to archive\nType                : All\nRetentionAction     : MoveToArchive\nAgeLimitForRetention : 730.00:00:00\nRetentionEnabled    : True\nMessageClass        :",
+      "exit_code": 0,
+      "duration_ms": 1300
+    },
+    {
+      "command": "Get-MailboxStatistics -Identity sarah.kim@contoso.com -Archive",
+      "command_pattern": "get-mailboxstatistics.*sarah.*-archive",
+      "output": "DisplayName   : In-Place Archive - Sarah Kim\nItemCount     : 12890\nTotalItemSize : 8.4 GB (9,019,431,116 bytes)",
+      "exit_code": 0,
+      "duration_ms": 1400
+    },
+    {
+      "command": "Get-MailboxFolderStatistics -Identity sarah.kim@contoso.com -Archive | Select Name,ItemsInFolder",
+      "command_pattern": "get-mailboxfolderstatistics.*sarah.*-archive",
+      "output": "Name          : Inbox\nItemsInFolder : 5200\n\nName          : Sent Items\nItemsInFolder : 4800\n\nName          : Calendar\nItemsInFolder : 1890\n\nName          : Notes\nItemsInFolder : 0\n\nName          : Drafts\nItemsInFolder : 1000",
+      "exit_code": 0,
+      "duration_ms": 1600
+    }
+  ]
+}

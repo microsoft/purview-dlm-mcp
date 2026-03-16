@@ -1,0 +1,41 @@
+id: inactive-mailbox-advanced-01
+tsg: inactive-mailbox
+difficulty: advanced
+symptom: >
+  GDPR deletion request: need to permanently delete inactive mailbox. Remove-Mailbox fails
+  with 'please remove all holds'. Litigation hold was removed 2 months ago.
+symptom_variants:
+  - "Cannot delete inactive mailbox for GDPR compliance"
+  - "Remove-Mailbox fails with holds error on inactive mailbox"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-Mailbox -InactiveMailboxOnly -Identity john.doe@contoso.com | Format-List DisplayName, IsInactiveMailbox, InPlaceHolds, LitigationHoldEnabled, ComplianceTagHoldApplied, DelayHoldApplied, WhenSoftDeleted"
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy | Format-List Name, Guid, Enabled"
+  - tool: run_powershell
+    command: "Get-ComplianceTag | Format-List Name, RetentionAction, IsRecordLabel"
+    optional: true
+  - tool: run_powershell
+    command: "Get-AdaptiveScope \"Legal Department Scope\" | Format-List FilterConditions, LocationCount"
+    optional: true
+ground_truth:
+  root_cause: "Two holds prevent inactive mailbox deletion: (1) ComplianceTagHoldApplied=True from 'Legal Record' retention label marking items as records, (2) InPlaceHold GUID (UniH9a8b7c6d...) maps to 'Legal Records Retention' policy using adaptive scope that still includes this mailbox. Litigation hold removal 2 months ago should have cleared any delay hold (30-day expiry), so the remaining holds are the actual blockers."
+  root_cause_category: configuration
+  supporting_evidence:
+    - "IsInactiveMailbox=True confirms mailbox is inactive"
+    - "ComplianceTagHoldApplied=True means retention labels with record/hold are applied to items"
+    - "InPlaceHolds GUID matches 'Legal Records Retention' policy"
+    - "LitigationHoldEnabled=False and DelayHoldApplied=False confirm lit hold fully released"
+    - "Adaptive scope 'Legal Department Scope' still includes inactive mailboxes"
+  remediation_steps:
+    - "Remove retention labels with record designation from items in the inactive mailbox"
+    - "Exclude the inactive mailbox from 'Legal Records Retention' policy scope"
+    - "Wait for hold stamps to be removed (may take up to 30 days)"
+    - "After all holds cleared, retry Remove-Mailbox -InactiveMailbox -PermanentlyDelete"
+    - "Document GDPR deletion timeline for compliance records"
+  remediation_risk: high
+  common_misdiagnoses:
+    - "Litigation hold removal didn't work (it did - delay hold already expired)"
+    - "Only one hold needs to be removed (two independent holds exist)"
+    - "The mailbox is corrupted and needs Support intervention"
+fixtures: mailbox-states/inactive-mailbox-adaptive-hold.json

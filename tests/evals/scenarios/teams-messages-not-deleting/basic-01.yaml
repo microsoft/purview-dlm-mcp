@@ -1,0 +1,29 @@
+id: teams-messages-not-deleting-basic-01
+tsg: teams-messages-not-deleting
+difficulty: basic
+symptom: >
+  We have a 1-year retention policy for Teams channel messages but
+  messages from 2 years ago are still visible in channels.
+symptom_variants:
+  - "Teams retention not deleting old messages"
+  - "Teams channel messages persist beyond retention period"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy | Format-List Name, TeamsChannelLocation, *Status*"
+  - tool: run_powershell
+    command: "Get-RetentionComplianceRule | Format-List Name, RetentionDuration, RetentionComplianceAction"
+ground_truth:
+  root_cause: "Teams retention deletes from substrate storage but messages may remain visible in the Teams UI for a period after backend deletion"
+  root_cause_category: timing
+  supporting_evidence:
+    - "Policy targets TeamsChannelLocation correctly"
+    - "RetentionComplianceAction is Delete"
+  remediation_steps:
+    - "Verify policy status shows Success for Teams workload"
+    - "Understand that Teams UI visibility can lag substrate deletion"
+    - "Check for competing longer-retention or hold policies"
+  remediation_risk: low
+  common_misdiagnoses:
+    - "Retention policy is not targeting Teams"
+    - "Teams doesn't support retention"
+fixtures: compliance-states/teams-retention-active.json

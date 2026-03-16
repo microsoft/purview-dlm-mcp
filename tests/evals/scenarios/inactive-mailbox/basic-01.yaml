@@ -1,0 +1,29 @@
+id: inactive-mailbox-basic-01
+tsg: inactive-mailbox
+difficulty: basic
+symptom: >
+  A user was deleted from Azure AD last week but their mailbox was
+  purged instead of becoming an inactive mailbox. We needed that data.
+symptom_variants:
+  - "Deleted user mailbox gone, expected inactive mailbox"
+  - "Former employee mailbox not showing as inactive"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-Mailbox -InactiveMailboxOnly -Identity user@contoso.com"
+  - tool: run_powershell
+    command: "Get-Mailbox -SoftDeletedMailbox -Identity user@contoso.com"
+    optional: true
+ground_truth:
+  root_cause: "No retention hold or litigation hold was applied to the mailbox before user deletion — mailbox was purged because there was no hold to convert it to inactive"
+  root_cause_category: configuration
+  supporting_evidence:
+    - "No InactiveMailboxOnly result found"
+    - "No retention policy or hold was assigned"
+  remediation_steps:
+    - "Check SoftDeletedMailbox within 30-day recovery window"
+    - "For future: ensure retention policy or hold is applied before deleting users"
+  remediation_risk: high
+  common_misdiagnoses:
+    - "Azure AD deletion broke the mailbox"
+    - "Exchange Online purged it by mistake"
+fixtures: mailbox-states/deleted-user-no-hold.json

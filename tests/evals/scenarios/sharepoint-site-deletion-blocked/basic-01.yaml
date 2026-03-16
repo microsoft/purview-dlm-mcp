@@ -1,0 +1,30 @@
+id: sharepoint-site-deletion-blocked-basic-01
+tsg: sharepoint-site-deletion-blocked
+difficulty: basic
+symptom: >
+  Cannot delete a SharePoint site. Getting error that site is on hold
+  or has a retention policy applied.
+symptom_variants:
+  - "SharePoint site deletion blocked by retention"
+  - "Site on hold, cannot delete"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy | Format-List Name, SharePointLocation, SharePointLocationException"
+  - tool: ask_learn
+    query: "SharePoint site deletion retention hold"
+    optional: true
+ground_truth:
+  root_cause: "Site is included in a Purview retention policy — sites under retention cannot be deleted until the policy is removed or an exception is added"
+  root_cause_category: configuration
+  supporting_evidence:
+    - "Retention policy includes All SharePoint sites"
+    - "No exception for this specific site"
+  remediation_steps:
+    - "Add the site URL to SharePointLocationException on the policy"
+    - "Wait for policy redistribution"
+    - "Then retry site deletion"
+  remediation_risk: medium
+  common_misdiagnoses:
+    - "SharePoint has a bug"
+    - "Admin permissions are insufficient"
+fixtures: compliance-states/sharepoint-retention-block.json

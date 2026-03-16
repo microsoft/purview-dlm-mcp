@@ -1,0 +1,10 @@
+{
+  "name": "adaptive-scope-wrong-members",
+  "description": "Adaptive scope includes wrong users due to bad AD data",
+  "commands": [
+    { "command": "Get-AdaptiveScope", "command_pattern": "get-adaptivescope", "output": "Name: Finance Scope\nRawQuery: (Department -eq 'Finance')\nStatus: Active\nMemberCount: 187", "exit_code": 0 },
+    { "command": "Get-Mailbox -Identity marketing-user@contoso.com", "command_pattern": "get-mailbox.*marketing-user", "output": "DisplayName: Marketing User\nDepartment: Finance\nCustomAttribute1: Marketing-Team", "exit_code": 0 },
+    { "command": "Get-Recipient -Filter \"(Department -eq 'Finance')\"", "command_pattern": "get-recipient.*-filter", "output": "Name: Marketing User\nDepartment: Finance\nRecipientType: UserMailbox\n\nName: Finance User 1\nDepartment: Finance\nRecipientType: UserMailbox\n\nName: Finance User 2\nDepartment: Finance\nRecipientType: UserMailbox", "exit_code": 0 },
+    { "command": "Get-RetentionCompliancePolicy | Where-Object { $_.AdaptiveScopeLocation }", "command_pattern": "get-retentioncompliancepolicy", "output": "Name: Finance Retention Policy\nAdaptiveScopeLocation: Finance Scope\nDistributionStatus: Success\nEnabled: True", "exit_code": 0 }
+  ]
+}

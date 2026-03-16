@@ -1,0 +1,48 @@
+{
+  "name": "delay-hold-blocking-archive",
+  "description": "DelayHoldApplied=True from recently removed policy blocks MFA archiving",
+  "commands": [
+    {
+      "command": "Get-Mailbox -Identity alex.chen@contoso.com | Format-List ArchiveStatus, ArchiveState, RetentionPolicy, AutoExpandingArchiveEnabled, InPlaceHolds, DelayHoldApplied, LitigationHoldEnabled, ComplianceTagHoldApplied",
+      "command_pattern": "get-mailbox.*alex.*format-list",
+      "output": "ArchiveStatus                : Active\nArchiveState                 : Local\nRetentionPolicy              : Default MRM Policy\nAutoExpandingArchiveEnabled  : False\nInPlaceHolds                 : {}\nDelayHoldApplied             : True\nLitigationHoldEnabled        : False\nComplianceTagHoldApplied     : False",
+      "exit_code": 0,
+      "duration_ms": 1600
+    },
+    {
+      "command": "Export-MailboxDiagnosticLogs -Identity alex.chen@contoso.com -ComponentName MRM",
+      "command_pattern": "export-mailboxdiagnosticlogs.*alex.*mrm",
+      "output": "MailboxLog : <?xml version=\"1.0\"?><Properties><MailboxTable><Property><n>ELCLastSuccessTimestamp</n><Value>2026-03-10T14:22:00Z</Value></Property><Property><n>ELCLastRunArchivedItemCount</n><Value>0</Value></Property><Property><n>ELCLastRunDeletedFromRootItemCount</n><Value>0</Value></Property></MailboxTable></Properties>",
+      "exit_code": 0,
+      "duration_ms": 2100
+    },
+    {
+      "command": "Get-MailboxFolderStatistics -Identity alex.chen@contoso.com -FolderScope RecoverableItems",
+      "command_pattern": "get-mailboxfolderstatistics.*alex.*recoverableitems",
+      "output": "Name                  : Recoverable Items\nFolderSize            : 15.8 GB (16,966,615,040 bytes)\nItemsInFolder         : 44,102\nFolderType            : RecoverableItems\n\nName                  : SubstrateHolds\nFolderSize            : 15.2 GB (16,321,839,104 bytes)\nItemsInFolder         : 42,891\nFolderType            : RecoverableItems",
+      "exit_code": 0,
+      "duration_ms": 1900
+    },
+    {
+      "command": "Get-MailboxStatistics -Identity alex.chen@contoso.com -Archive",
+      "command_pattern": "get-mailboxstatistics.*alex.*-archive",
+      "output": "DisplayName       : In-Place Archive - Alex Chen\nItemCount         : 245\nTotalItemSize     : 1.8 GB (1,932,735,283 bytes)",
+      "exit_code": 0,
+      "duration_ms": 1400
+    },
+    {
+      "command": "Get-RetentionPolicyTag -Mailbox alex.chen@contoso.com",
+      "command_pattern": "get-retentionpolicytag",
+      "output": "Name                    : Default 2 year move to archive\nRetentionAction         : MoveToArchive\nAgeLimitForRetention    : 730.00:00:00\nRetentionEnabled        : True\nType                    : All\n\nName                    : Personal 1 year move to archive\nRetentionAction         : MoveToArchive\nAgeLimitForRetention    : 365.00:00:00\nRetentionEnabled        : True\nType                    : Personal",
+      "exit_code": 0,
+      "duration_ms": 1300
+    },
+    {
+      "command": "Get-OrganizationConfig | Format-List ElcProcessingDisabled",
+      "command_pattern": "get-organizationconfig",
+      "output": "ElcProcessingDisabled : False",
+      "exit_code": 0,
+      "duration_ms": 1100
+    }
+  ]
+}

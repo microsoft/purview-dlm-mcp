@@ -1,0 +1,33 @@
+id: mrm-purview-conflict-basic-01
+tsg: mrm-purview-conflict
+difficulty: advanced
+symptom: >
+  User has both an MRM retention policy and a Purview retention policy.
+  Emails are being deleted unexpectedly after 30 days instead of the
+  expected 7 years.
+symptom_variants:
+  - "MRM and Purview retention conflict"
+  - "Emails deleted too soon, both retention systems active"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-Mailbox -Identity user@contoso.com | Format-List RetentionPolicy, InPlaceHolds"
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy | Format-List Name, ExchangeLocation"
+  - tool: run_powershell
+    command: "Get-RetentionPolicy | Format-List Name, RetentionPolicyTagLinks"
+    optional: true
+ground_truth:
+  root_cause: "MRM retention tag with 30-day delete-and-allow-recovery is overriding Purview 7-year retention because MRM processes first and deletes items before Purview hold takes effect"
+  root_cause_category: conflict
+  supporting_evidence:
+    - "Both RetentionPolicy (MRM) and InPlaceHolds (Purview) are set"
+    - "MRM policy has a 30-day delete tag"
+  remediation_steps:
+    - "Remove the MRM retention policy or modify the 30-day tag"
+    - "Rely solely on Purview retention for consistent behavior"
+    - "Alternatively, set MRM tag to move-to-archive instead of delete"
+  remediation_risk: medium
+  common_misdiagnoses:
+    - "Purview retention is broken"
+    - "Someone manually deleted the emails"
+fixtures: mailbox-states/mrm-purview-both-active.json

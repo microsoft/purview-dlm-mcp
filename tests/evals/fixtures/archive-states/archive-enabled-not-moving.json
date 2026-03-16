@@ -1,0 +1,42 @@
+{
+  "name": "archive-enabled-not-moving",
+  "description": "Archive active but MFA hasn't processed — items stuck in primary",
+  "commands": [
+    {
+      "command": "Get-Mailbox -Identity jane.smith@contoso.com | Format-List ArchiveStatus, ArchiveState, RetentionPolicy, AutoExpandingArchiveEnabled",
+      "command_pattern": "get-mailbox.*jane.*format-list.*archive",
+      "output": "ArchiveStatus             : Active\nArchiveState              : Local\nRetentionPolicy           : Default MRM Policy\nAutoExpandingArchiveEnabled : False",
+      "exit_code": 0, "duration_ms": 1500
+    },
+    {
+      "command": "Get-MailboxStatistics -Identity jane.smith@contoso.com -Archive",
+      "command_pattern": "get-mailboxstatistics.*jane.*-archive",
+      "output": "DisplayName       : In-Place Archive - Jane Smith\nItemCount         : 12\nTotalItemSize     : 45.2 MB (47,396,352 bytes)",
+      "exit_code": 0, "duration_ms": 1400
+    },
+    {
+      "command": "Export-MailboxDiagnosticLogs -Identity jane.smith@contoso.com -ComponentName MRM",
+      "command_pattern": "export-mailboxdiagnosticlogs.*jane.*mrm",
+      "output": "MailboxLog : <?xml version=\"1.0\"?><Properties><MailboxTable><Property><n>ELCLastSuccessTimestamp</n><Value></Value></Property><Property><n>ELCLastRunArchivedItemCount</n><Value>0</Value></Property></MailboxTable></Properties>",
+      "exit_code": 0, "duration_ms": 2200
+    },
+    {
+      "command": "Get-RetentionPolicyTag",
+      "command_pattern": "get-retentionpolicytag",
+      "output": "Name: Default 2 year move to archive\nRetentionAction: MoveToArchive\nAgeLimitForRetention: 730.00:00:00\nRetentionEnabled: True\nType: All\n\nName: Personal 1 year move to archive\nRetentionAction: MoveToArchive\nAgeLimitForRetention: 365.00:00:00\nRetentionEnabled: True\nType: Personal",
+      "exit_code": 0, "duration_ms": 1300
+    },
+    {
+      "command": "Get-OrganizationConfig | Format-List ElcProcessingDisabled",
+      "command_pattern": "get-organizationconfig",
+      "output": "ElcProcessingDisabled : False",
+      "exit_code": 0, "duration_ms": 1100
+    },
+    {
+      "command": "Get-MoveRequest",
+      "command_pattern": "get-moverequest",
+      "output": "WARNING: No move request found",
+      "exit_code": 0, "duration_ms": 900
+    }
+  ]
+}

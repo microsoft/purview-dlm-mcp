@@ -1,0 +1,29 @@
+id: auto-apply-labels-basic-01
+tsg: auto-apply-labels
+difficulty: basic
+symptom: >
+  Auto-apply retention label policy is not labeling any content.
+  Policy status shows Off (Error) in the compliance portal.
+symptom_variants:
+  - "Auto-apply label not working"
+  - "Retention label policy shows error"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy | Format-List Name, *Status*, Mode"
+  - tool: run_powershell
+    command: "Get-ComplianceTag | Format-List Name, RetentionAction, RetentionDuration"
+ground_truth:
+  root_cause: "Policy is in Error state — auto-apply label policies require E5 compliance licensing on target users"
+  root_cause_category: licensing
+  supporting_evidence:
+    - "Policy DistributionStatus shows Error"
+    - "Mode shows Enforce but status is Off"
+  remediation_steps:
+    - "Verify E5 Compliance or E5 Information Protection licensing"
+    - "Assign required licenses to target users"
+    - "Re-enable the policy after licensing is corrected"
+  remediation_risk: low
+  common_misdiagnoses:
+    - "Policy query/KQL is wrong"
+    - "Content doesn't match the auto-apply conditions"
+fixtures: compliance-states/auto-apply-label-error.json

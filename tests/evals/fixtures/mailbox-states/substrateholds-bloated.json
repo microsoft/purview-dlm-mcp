@@ -1,0 +1,12 @@
+{
+  "name": "substrateholds-bloated",
+  "description": "Recoverable Items bloated by SubstrateHolds",
+  "commands": [
+    { "command": "Get-MailboxFolderStatistics -Identity user@contoso.com -FolderScope RecoverableItems", "command_pattern": "get-mailboxfolderstatistics.*recoverableitems", "output": "Name: SubstrateHolds\nFolderSize: 80.2 GB\nItemsInFolder: 245678\n\nName: Purges\nFolderSize: 5.1 GB\nItemsInFolder: 12340", "exit_code": 0 },
+    { "command": "Get-Mailbox -Identity user@contoso.com", "command_pattern": "get-mailbox.*-identity.*user", "output": "InPlaceHolds: {mbxabc123:1, mbxdef456:2, UniH7890}\nLitigationHoldEnabled: False", "exit_code": 0 },
+    { "command": "Get-RetentionCompliancePolicy", "command_pattern": "get-retentioncompliancepolicy", "output": "Name: Policy1\nDistributionStatus: Success\n\nName: Policy2\nDistributionStatus: Success\n\nName: Policy3\nDistributionStatus: Success", "exit_code": 0 },
+    { "command": "Get-OrganizationConfig | Format-List InPlaceHolds", "command_pattern": "get-organizationconfig", "output": "InPlaceHolds : {}", "exit_code": 0 },
+    { "command": "Export-MailboxDiagnosticLogs -Identity user@contoso.com -ComponentName DumpsterExpiration", "command_pattern": "export-mailboxdiagnosticlogs.*dumpsterexpiration", "output": "MailboxLog : <?xml version=\"1.0\"?><Properties><MailboxTable><Property><n>DumpsterExpirationHoldCount</n><Value>3</Value></Property><Property><n>DumpsterExpirationHoldNames</n><Value>mbxabc123:1, mbxdef456:2, UniH7890</Value></Property></MailboxTable></Properties>", "exit_code": 0 },
+    { "command": "Get-MailboxStatistics -Identity user@contoso.com", "command_pattern": "get-mailboxstatistics.*user", "output": "DisplayName: Test User\nItemCount: 15234\nTotalItemSize: 12.3 GB (13,207,024,640 bytes)\nTotalDeletedItemSize: 85.3 GB (91,597,629,440 bytes)", "exit_code": 0 }
+  ]
+}

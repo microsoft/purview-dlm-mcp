@@ -1,0 +1,42 @@
+id: retention-policy-not-applying-intermediate-01
+tsg: retention-policy-not-applying
+difficulty: intermediate
+symptom: >
+  Our 1-year keep-then-delete retention policy has been active for 2 years. Items from
+  18 months ago still present. Policy shows Success. We're being audited.
+symptom_variants:
+  - "Retention policy not deleting old items despite Success status"
+  - "1-year delete policy active for 2 years but items remain"
+expected_tools:
+  - tool: run_powershell
+    command: "Get-RetentionCompliancePolicy \"Annual Cleanup Policy\" -DistributionDetail | Format-List Name, DistributionStatus, Enabled, CreatedDate, ExchangeLocation"
+  - tool: run_powershell
+    command: "Get-RetentionComplianceRule \"Annual Cleanup Rule\" | Format-List RetentionDuration, RetentionDurationDisplayHint, RetentionComplianceAction"
+  - tool: run_powershell
+    command: "Get-Mailbox -Identity finance.user@contoso.com | Format-List RetentionPolicy, AutoExpandingArchiveEnabled, InPlaceHolds, DelayHoldApplied, ComplianceTagHoldApplied"
+  - tool: run_powershell
+    command: "Export-MailboxDiagnosticLogs -Identity finance.user@contoso.com -ComponentName MRM"
+  - tool: run_powershell
+    command: "Get-RetentionPolicyTag -Mailbox finance.user@contoso.com"
+    optional: true
+ground_truth:
+  root_cause: "'Never Delete' personal MRM tag is applied to the Inbox folder, overriding the Purview 1-year delete policy. MRM tag precedence rules mean explicit personal tags always win over implicit policy tags (DPT). The Purview delete action only triggers after MRM processing, and MRM respects the personal 'Never Delete' tag on Inbox, preventing deletion of items in that folder."
+  root_cause_category: conflict
+  supporting_evidence:
+    - "Purview policy shows DistributionStatus=Success - policy IS distributed correctly"
+    - "MRM logs show recent processing with deletions in Sent Items but zero deletions in Inbox"
+    - "RetentionPolicyTag shows 'Never Delete' Personal tag assigned to Inbox"
+    - "MRM tag precedence: Personal tag > Policy tag (DPT) - explicitly assigned 'Never Delete' overrides 1-year DPT"
+    - "AutoExpandingArchiveEnabled=True is a confounder - irrelevant to deletion behavior"
+  remediation_steps:
+    - "Remove or change the 'Never Delete' personal tag from the Inbox folder"
+    - "Educate user that personal MRM tags override organization-wide retention policies"
+    - "After tag removal, wait for next MFA cycle (up to 7 days) for deletions to begin"
+    - "Consider whether MRM policy should be replaced entirely with Purview retention labels for consistent behavior"
+  remediation_risk: medium
+  common_misdiagnoses:
+    - "Purview retention policy is not working"
+    - "Policy needs to be redistributed"
+    - "AutoExpandingArchive is interfering with deletion"
+    - "There's a hold blocking deletion (no holds are present)"
+fixtures: policy-states/retention-not-deleting-post-expiry.json

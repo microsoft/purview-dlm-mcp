@@ -1,0 +1,36 @@
+{
+  "name": "new-policy-pending-distribution",
+  "description": "Retention policy created recently, shows Success but MFA hasn't processed yet",
+  "commands": [
+    {
+      "command": "Get-RetentionCompliancePolicy | Format-List Name, *Status*, Enabled",
+      "command_pattern": "get-retentioncompliancepolicy",
+      "output": "Name                : 7-Year Exchange Retention\nEnabled             : True\nDistributionStatus  : Success\nWhenCreated         : 03/07/2026 10:30:00 AM\nExchangeLocation    : All\nMode                : Enforce",
+      "exit_code": 0, "duration_ms": 2100
+    },
+    {
+      "command": "Get-RetentionComplianceRule | Format-List Name, RetentionDuration, *Action*",
+      "command_pattern": "get-retentioncompliancerule",
+      "output": "Name                    : 7-Year Exchange Retention Rule\nPolicy                  : 7-Year Exchange Retention\nRetentionDuration       : 2555\nRetentionComplianceAction : Delete\nExpirationDateOption    : CreationAgeInDays\nEnabled                 : True",
+      "exit_code": 0, "duration_ms": 1800
+    },
+    {
+      "command": "Get-Mailbox -Identity john.doe@contoso.com | Format-List RetentionPolicy, LitigationHoldEnabled, InPlaceHolds",
+      "command_pattern": "get-mailbox.*-identity",
+      "output": "RetentionPolicy       :\nLitigationHoldEnabled : False\nInPlaceHolds          : {mbx7e987654321098765432109876543210:2}",
+      "exit_code": 0, "duration_ms": 1500
+    },
+    {
+      "command": "Export-MailboxDiagnosticLogs -Identity john.doe@contoso.com -ComponentName MRM",
+      "command_pattern": "export-mailboxdiagnosticlogs.*mrm",
+      "output": "MailboxLog : <?xml version=\"1.0\"?><Properties><MailboxTable><Property><n>ELCLastSuccessTimestamp</n><Value></Value></Property><Property><n>ELCLastRunTotalProcessingTime</n><Value></Value></Property></MailboxTable></Properties>",
+      "exit_code": 0, "duration_ms": 2500
+    },
+    {
+      "command": "Get-ComplianceTag",
+      "command_pattern": "get-compliancetag",
+      "output": "Name: 7-Year Retention Label\nRetentionAction: KeepAndDelete\nRetentionDuration: 2555\nIsRecordLabel: False\nEnabled: True",
+      "exit_code": 0, "duration_ms": 1200
+    }
+  ]
+}
