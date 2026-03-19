@@ -93,6 +93,7 @@ const cmdletPattern = /\b([A-Z][a-z]+-[A-Z][A-Za-z]+)\b/g;
 export interface ValidationResult {
   valid: boolean;
   violation?: string;
+  blockedVerb?: string;
 }
 
 /**
@@ -117,6 +118,7 @@ export function validateCommand(command: string): ValidationResult {
         return {
           valid: false,
           violation: `Blocked cmdlet: ${cmdlet} \u2014 ${prefix.charAt(0).toUpperCase() + prefix.slice(1)}* cmdlets are not allowed`,
+          blockedVerb: prefix.slice(0, -1),
         };
       }
     }

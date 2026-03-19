@@ -8,7 +8,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server for d
 
 ## Features
 
-- **4 MCP tools** — `run_powershell` for executing read-only Exchange Online commands, `get_execution_log` for retrieving a full audit trail, `ask_learn` for Microsoft Learn documentation lookup, and `create_issue` for reporting issues with the MCP server to GitHub
+- **5 MCP tools** — `run_powershell` for executing read-only Exchange Online commands, `get_execution_log` for retrieving a full audit trail, `ask_learn` for Microsoft Learn documentation lookup, `create_issue` for reporting issues with the MCP server to GitHub, and `submit_feedback` for collecting structured diagnostic session feedback
 - **11 TSG reference guides** — step-by-step diagnostic workflows aligned to common DLM symptoms
 - **72 diagnostic checks** — automated evaluation engine that parses PowerShell output and produces structured findings with remediation
 - **Cmdlet allowlist** — only pre-approved read-only cmdlets can be executed; mutating commands are blocked
@@ -115,6 +115,7 @@ Add this to your `.vscode/settings.json` or user settings:
 | `get_execution_log` | Retrieve the log of all commands executed during the current session |
 | `ask_learn` | Look up Microsoft Purview documentation on Microsoft Learn (fallback when no TSG matches) |
 | `create_issue` | Report an issue with the MCP server to GitHub, attaching session diagnostic context |
+| `submit_feedback` | Submit structured feedback about a diagnostic session (emits telemetry, no PII) |
 
 ### Tool Examples
 
@@ -202,6 +203,8 @@ The AI uses `create_issue` to report the bug to the MCP server's GitHub repo:
 | `DLM_UPN` | Yes | Admin UPN for Exchange Online (e.g., `admin@contoso.onmicrosoft.com`) |
 | `DLM_ORGANIZATION` | Yes | Tenant organization (e.g., `contoso.onmicrosoft.com`) |
 | `DLM_COMMAND_TIMEOUT_MS` | No | Command execution timeout in ms (default: `180000`) |
+| `DLM_COLLECT_TELEMETRY` | No | Set to `false` to disable all telemetry (default: `true`) |
+| `DLM_COLLECT_TELEMETRY_MICROSOFT` | No | Set to `false` to disable Microsoft 1P telemetry (default: `true`) |
 
 ## Supported TSGs
 
@@ -229,12 +232,14 @@ The server is a TypeScript/Node.js application built with the `@modelcontextprot
 4. **Cmdlet Allowlist** (`src/powershell/allowlist.ts`) — validates every command against the approved cmdlet list before execution
 5. **TSG Diagnostics Engine** (`src/tsg-diagnostics.ts`) — evaluates command output against reference guide checklists
 6. **GitHub Integration** (`src/github/auth.ts`, `src/github/issues.ts`) — authenticates via `DLM_GITHUB_TOKEN` or `gh auth token` and creates structured GitHub issues
+7. **Telemetry** (`src/telemetry.ts`) — optional Application Insights telemetry for tool invocations, session lifecycle, and errors (1P only, no PII, opt-out via env var)
 
 ## Security Model
 
 - **Read-only allowlist** — only `Get-*`, `Test-*`, and `Export-*` cmdlets are permitted; mutating commands are rejected before reaching PowerShell
 - **No stored credentials** — authentication uses MSAL interactive flow; no passwords or tokens are persisted
 - **Session isolation** — each server instance runs its own PowerShell process with independent session state
+- **Telemetry** — 1P Application Insights only, no PII collected, opt-out via `DLM_COLLECT_TELEMETRY=false`
 
 ## Skills
 

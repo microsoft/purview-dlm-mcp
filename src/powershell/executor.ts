@@ -5,6 +5,7 @@ import { spawn, type ChildProcess } from "child_process";
 import { randomUUID } from "crypto";
 import { validateCommand } from "./allowlist.js";
 import { COMMAND_TIMEOUT_MS } from "../config.js";
+import type { Telemetry } from "../telemetry.js";
 
 // ─── Types ───
 
@@ -33,6 +34,7 @@ export class PsExecutor {
   private proc: ChildProcess | null = null;
   private buf = "";
   private ready = false;
+  private telemetry?: Telemetry;
 
   get isReady(): boolean {
     return this.ready;
@@ -40,70 +42,95 @@ export class PsExecutor {
 
   /* ───────── Lifecycle ───────── */
 
-  async init(): Promise<void> {
-    this.proc = spawn("pwsh", ["-NoExit", "-NoProfile", "-Command", "-"], {
-      stdio: ["pipe", "pipe", "pipe"],
-      shell: false,
-      env: { ...process.env },
-    });
+  async init(telemetry?: Telemetry): Promise<void> {
+    this.telemetry = telemetry;
+    const initStart = Date.now();
+    let lastStage = "spawn";
 
-    this.proc.stdout!.on("data", (d: Buffer) => {
-      this.buf += d.toString();
-    });
-    this.proc.stderr!.on("data", (d: Buffer) => {
-      process.stderr.write(d);
-    });
-    this.proc.on("exit", (code) => {
-      process.stderr.write(`[PsExecutor] pwsh exited (code ${code})\n`);
-      this.ready = false;
-    });
+    try {
+      this.proc = spawn("pwsh", ["-NoExit", "-NoProfile", "-Command", "-"], {
+        stdio: ["pipe", "pipe", "pipe"],
+        shell: false,
+        env: { ...process.env },
+      });
 
-    await this.waitForMarker();
+      this.proc.stdout!.on("data", (d: Buffer) => {
+        this.buf += d.toString();
+      });
+      this.proc.stderr!.on("data", (d: Buffer) => {
+        process.stderr.write(d);
+      });
+      this.proc.on("exit", (code) => {
+        process.stderr.write(`[PsExecutor] pwsh exited (code ${code})\n`);
+        this.ready = false;
+      });
 
-    // Suppress progress bars
-    await this.execRaw("$ProgressPreference = 'SilentlyContinue'", 5_000);
+      await this.waitForMarker();
 
-    const upn = process.env.DLM_UPN;
-    const org = process.env.DLM_ORGANIZATION;
-    if (!upn || !org) {
-      throw new Error("Environment variables DLM_UPN and DLM_ORGANIZATION are required.");
+      // Suppress progress bars
+      await this.execRaw("$ProgressPreference = 'SilentlyContinue'", 5_000);
+
+      const upn = process.env.DLM_UPN;
+      const org = process.env.DLM_ORGANIZATION;
+      if (!upn || !org) {
+        throw new Error("Environment variables DLM_UPN and DLM_ORGANIZATION are required.");
+      }
+
+      // Step 0: Pre-import ExchangeOnlineManagement module
+      lastStage = "module-import";
+      process.stderr.write("[PsExecutor] Importing ExchangeOnlineManagement module\u2026\n");
+      await this.execRaw("Import-Module ExchangeOnlineManagement -ErrorAction Stop", 30_000);
+      process.stderr.write("[PsExecutor] Module imported \u2713\n");
+
+      // Step 1: Acquire access token via MSAL interactive browser
+      lastStage = "token-acquire";
+      process.stderr.write("[PsExecutor] Acquiring access token (browser will open)\u2026\n");
+      const token = await this.acquireAccessToken("https://outlook.office365.com/.default", upn, org, 300_000);
+
+      // Step 2: Connect Exchange Online with the token
+      lastStage = "exo-connect";
+      process.stderr.write("[PsExecutor] Connecting to Exchange Online\u2026\n");
+      await this.execRaw(
+        `Connect-ExchangeOnline -AccessToken '${token}' ` + `-Organization '${this.escape(org)}' -ShowBanner:$false`,
+        120_000,
+      );
+
+      // Step 3: Connect IPPSSession with the same token
+      lastStage = "ipps-connect";
+      process.stderr.write("[PsExecutor] Connecting to Security & Compliance (IPPSSession)\u2026\n");
+      await this.execRaw(`$_ippsToken = '${token}'`, 5_000);
+      const sccCmdlets = [
+        "Get-RetentionCompliancePolicy",
+        "Get-RetentionComplianceRule",
+        "Get-AdaptiveScope",
+        "Get-ComplianceTag",
+      ];
+      await this.execRaw(
+        `Connect-IPPSSession -AccessToken $_ippsToken ` +
+          `-Organization '${this.escape(org)}' ` +
+          `-CommandName ${sccCmdlets.join(",")} ` +
+          `-ShowBanner:$false -ErrorAction Stop`,
+        120_000,
+      );
+
+      this.ready = true;
+      process.stderr.write("[PsExecutor] Sessions connected \u2713\n");
+      this.telemetry?.trackEvent(
+        "SessionInitialized",
+        { success: "true", stage: lastStage },
+        { durationMs: Date.now() - initStart },
+      );
+    } catch (err) {
+      this.telemetry?.trackEvent(
+        "SessionInitFailed",
+        {
+          stage: lastStage,
+          errorType: err instanceof Error ? err.constructor.name : "Unknown",
+        },
+        { durationMs: Date.now() - initStart },
+      );
+      throw err;
     }
-
-    // Step 0: Pre-import ExchangeOnlineManagement module
-    process.stderr.write("[PsExecutor] Importing ExchangeOnlineManagement module\u2026\n");
-    await this.execRaw("Import-Module ExchangeOnlineManagement -ErrorAction Stop", 30_000);
-    process.stderr.write("[PsExecutor] Module imported \u2713\n");
-
-    // Step 1: Acquire access token via MSAL interactive browser
-    process.stderr.write("[PsExecutor] Acquiring access token (browser will open)\u2026\n");
-    const token = await this.acquireAccessToken("https://outlook.office365.com/.default", upn, org, 300_000);
-
-    // Step 2: Connect Exchange Online with the token
-    process.stderr.write("[PsExecutor] Connecting to Exchange Online\u2026\n");
-    await this.execRaw(
-      `Connect-ExchangeOnline -AccessToken '${token}' ` + `-Organization '${this.escape(org)}' -ShowBanner:$false`,
-      120_000,
-    );
-
-    // Step 3: Connect IPPSSession with the same token
-    process.stderr.write("[PsExecutor] Connecting to Security & Compliance (IPPSSession)\u2026\n");
-    await this.execRaw(`$_ippsToken = '${token}'`, 5_000);
-    const sccCmdlets = [
-      "Get-RetentionCompliancePolicy",
-      "Get-RetentionComplianceRule",
-      "Get-AdaptiveScope",
-      "Get-ComplianceTag",
-    ];
-    await this.execRaw(
-      `Connect-IPPSSession -AccessToken $_ippsToken ` +
-        `-Organization '${this.escape(org)}' ` +
-        `-CommandName ${sccCmdlets.join(",")} ` +
-        `-ShowBanner:$false -ErrorAction Stop`,
-      120_000,
-    );
-
-    this.ready = true;
-    process.stderr.write("[PsExecutor] Sessions connected \u2713\n");
   }
 
   async shutdown(): Promise<void> {
@@ -220,6 +247,9 @@ export class PsExecutor {
     }
     const v = validateCommand(command);
     if (!v.valid) {
+      if (v.blockedVerb) {
+        this.telemetry?.trackEvent("CommandValidationBlocked", { blockedVerb: v.blockedVerb });
+      }
       return { success: false, output: "", error: v.violation };
     }
     try {
@@ -257,7 +287,10 @@ export class PsExecutor {
         `try { ${command} } catch { Write-Output "PS_ERROR: $($_.Exception.Message)" }; ` +
         `Write-Output '${marker}'\n`;
 
-      const timeout = setTimeout(() => reject(new Error("Command timed out")), timeoutMs);
+      const timeout = setTimeout(() => {
+        this.telemetry?.trackEvent("CommandTimeout", {}, { timeoutMs });
+        reject(new Error("Command timed out"));
+      }, timeoutMs);
 
       const poll = setInterval(() => {
         const idx = this.buf.indexOf(marker);
