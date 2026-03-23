@@ -1,6 +1,6 @@
 {
   "name": "@microsoft/purview-dlm-mcp",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "MCP server for diagnosing Microsoft Purview Data Lifecycle Management (DLM) issues in Exchange Online",
   "type": "module",
   "main": "dist/index.js",
@@ -45,6 +45,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "applicationinsights": "^2.9.6",
     "zod": "^3.24.2"
   },
   "devDependencies": {
