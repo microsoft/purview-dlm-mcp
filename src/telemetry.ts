@@ -7,7 +7,7 @@ import { randomUUID } from "crypto";
 // 1P Application Insights connection string (write-only ingestion identifier, not a secret).
 // See docs/design/telemetry.md §4.1 for rationale on embedding this in source.
 const CONNECTION_STRING =
-  "InstrumentationKey=2ef4e317-3395-4edc-9bf8-cb9900aee3c0;IngestionEndpoint=https://westus2-2.in.applicationinsights.azure.com/;LiveEndpoint=https://westus2.livediagnostics.monitor.azure.com/;ApplicationId=bf6bed25-b1d9-41df-8f72-716345cf62ed";
+  "InstrumentationKey=470f24ba-d4b2-40cf-b397-dbf8c08bf13d;IngestionEndpoint=https://eastus-8.in.applicationinsights.azure.com/;LiveEndpoint=https://eastus.livediagnostics.monitor.azure.com/;ApplicationId=6620ee33-e218-4783-ba30-c407a085f729";
 
 /**
  * Singleton telemetry wrapper around Application Insights.
