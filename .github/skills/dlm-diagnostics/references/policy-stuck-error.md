@@ -77,6 +77,8 @@ Analyze the collected data against the following criteria. Flag each as ✅ (hea
 
 ## Resolution & Remediation
 
+> **⚠️ Do not offer to execute these steps.** The resolutions below contain mutating commands (`Set-*`, `New-*`, `Remove-*`, etc.) that cannot be run through the MCP server. Present these as recommendations for the admin to review and run manually in their own PowerShell session.
+
 Based on flagged issues from the diagnostic analysis, apply the corresponding resolution:
 
 | ❌ Check | Root Cause | Resolution |

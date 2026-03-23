@@ -1766,6 +1766,9 @@ export function renderMarkdownReport(results: TsgResult[]): string {
       );
       if (actionable.length > 0) {
         lines.push("### Remediation");
+        lines.push("");
+        lines.push("> \u26A0\uFE0F **Manual action required.** The steps below may contain mutating commands that cannot be executed through this MCP server. Copy and run them manually in your own PowerShell session after reviewing each one.");
+        lines.push("");
         for (const d of actionable) {
           const icon = severityIcon(d.severity);
           lines.push(`- **${d.check}** (${icon}): ${d.remediation}`);
