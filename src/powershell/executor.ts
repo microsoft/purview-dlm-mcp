@@ -7,6 +7,63 @@ import { validateCommand } from "./allowlist.js";
 import { COMMAND_TIMEOUT_MS } from "../config.js";
 import type { Telemetry } from "../telemetry.js";
 
+// ─── Environment Isolation ───
+
+/**
+ * Allowlist of environment variables passed through to the pwsh subprocess.
+ * Everything else — including DLM_GITHUB_TOKEN, DLM_UPN, DLM_ORGANIZATION,
+ * and any AZURE_, AWS_, or GITHUB_ secrets in the operator's shell — is
+ * withheld from the child so a successful cmdlet-allowlist bypass cannot
+ * exfiltrate them via `$env:NAME`.
+ */
+const SAFE_ENV_KEYS = [
+  // Windows
+  "PATH",
+  "PATHEXT",
+  "SystemRoot",
+  "SystemDrive",
+  "ComSpec",
+  "windir",
+  "USERPROFILE",
+  "USERNAME",
+  "USERDOMAIN",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "ProgramData",
+  "ProgramFiles",
+  "ProgramFiles(x86)",
+  "ProgramW6432",
+  "TEMP",
+  "TMP",
+  "COMPUTERNAME",
+  "PROCESSOR_ARCHITECTURE",
+  "PROCESSOR_IDENTIFIER",
+  "NUMBER_OF_PROCESSORS",
+  "OS",
+  "PUBLIC",
+  "ALLUSERSPROFILE",
+  // PowerShell-specific
+  "PSModulePath",
+  "POWERSHELL_DISTRIBUTION_CHANNEL",
+  // POSIX (cross-platform support)
+  "HOME",
+  "USER",
+  "LANG",
+  "LC_ALL",
+  "SHELL",
+];
+
+function buildSafeEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const k of SAFE_ENV_KEYS) {
+    const v = process.env[k];
+    if (v !== undefined) env[k] = v;
+  }
+  return env;
+}
+
 // ─── Types ───
 
 export interface PsResult {
@@ -51,7 +108,7 @@ export class PsExecutor {
       this.proc = spawn("pwsh", ["-NoExit", "-NoProfile", "-Command", "-"], {
         stdio: ["pipe", "pipe", "pipe"],
         shell: false,
-        env: { ...process.env },
+        env: buildSafeEnv(),
       });
 
       this.proc.stdout!.on("data", (d: Buffer) => {
@@ -113,6 +170,22 @@ export class PsExecutor {
         120_000,
       );
 
+      // Step 4: Scrub the access token from session scope. Connect-IPPSSession
+      // only needs the token at connection time; afterwards the session uses
+      // its own internal credential cache. Removing the variable prevents any
+      // future allowlist bypass from exfiltrating `$_ippsToken`.
+      lastStage = "token-scrub";
+      await this.execRaw(
+        "Remove-Variable _ippsToken -Force -ErrorAction SilentlyContinue; [System.GC]::Collect() | Out-Null",
+        5_000,
+      );
+
+      // Step 5: Harden the runspace before user commands can flow through
+      // execute(). Even if validateCommand is ever bypassed, the runspace
+      // itself refuses to invoke these primitives.
+      lastStage = "runspace-harden";
+      await this.hardenRunspace();
+
       this.ready = true;
       process.stderr.write("[PsExecutor] Sessions connected \u2713\n");
       this.telemetry?.trackEvent(
@@ -140,6 +213,36 @@ export class PsExecutor {
       this.proc = null;
       this.ready = false;
     }
+  }
+
+  /* ───────── Runspace Hardening ───────── */
+
+  /**
+   * Lock down the long-lived pwsh session before user commands can run.
+   * Removes high-risk aliases and overrides dangerous cmdlets with functions
+   * that throw. This is the Node-spawned equivalent of TypeAgent's
+   * `InitialSessionState.Commands.Remove()` approach: a defense-in-depth layer
+   * that survives any future validateCommand bypass.
+   */
+  private async hardenRunspace(): Promise<void> {
+    const overrides = [
+      "Invoke-WebRequest",
+      "Invoke-RestMethod",
+      "Invoke-Expression",
+      "Invoke-Command",
+      "Start-Process",
+      "Add-Type",
+      "Connect-ExchangeOnline",
+      "Connect-IPPSSession",
+      "Disconnect-ExchangeOnline",
+      "Disconnect-IPPSSession",
+    ];
+    const denyMsg = "Disabled by Purview DLM MCP security policy";
+    const statements: string[] = [
+      "Remove-Item Alias:iwr, Alias:irm, Alias:iex, Alias:icm, Alias:curl, Alias:wget, Alias:saps -Force -ErrorAction SilentlyContinue",
+      ...overrides.map((name) => `function global:${name} { throw '${denyMsg}' }`),
+    ];
+    await this.execRaw(statements.join("; "), 10_000);
   }
 
   /* ───────── Token Acquisition ───────── */
@@ -197,6 +300,7 @@ export class PsExecutor {
       const child = spawn("pwsh", ["-NoProfile", "-NonInteractive", "-Command", script], {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: false,
+        env: buildSafeEnv(),
       });
 
       let stdout = "";

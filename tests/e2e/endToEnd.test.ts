@@ -95,12 +95,16 @@ test("blocks pipeline with blocked cmdlet", async () => {
 // --- Group 3: Security & Compliance Cmdlets ---
 
 test("Get-RetentionCompliancePolicy returns data", async () => {
-  const output = await runAndExpectSuccess("Get-RetentionCompliancePolicy | Select-Object -First 1 Name, DistributionStatus");
+  const output = await runAndExpectSuccess(
+    "Get-RetentionCompliancePolicy | Select-Object -First 1 Name, DistributionStatus",
+  );
   expect(output).toBeTruthy();
 });
 
 test("Get-RetentionComplianceRule returns data", async () => {
-  const policyOutput = await runAndExpectSuccess("Get-RetentionCompliancePolicy | Select-Object -First 1 Name | ConvertTo-Json");
+  const policyOutput = await runAndExpectSuccess(
+    "Get-RetentionCompliancePolicy | Select-Object -First 1 Name | ConvertTo-Json",
+  );
   let policyName: string;
   try {
     policyName = JSON.parse(policyOutput).Name;
@@ -162,13 +166,17 @@ test("pipeline with Format-List", async () => {
 });
 
 test("ConvertTo-Json produces valid JSON", async () => {
-  const output = await runAndExpectSuccess("Get-OrganizationConfig | Select-Object AutoExpandingArchiveEnabled | ConvertTo-Json");
+  const output = await runAndExpectSuccess(
+    "Get-OrganizationConfig | Select-Object AutoExpandingArchiveEnabled | ConvertTo-Json",
+  );
   const json = JSON.parse(output);
   expect(json).toBeDefined();
 });
 
 test("multi-pipe chain executes", async () => {
-  await runAndExpectSuccess("Get-RetentionCompliancePolicy | Select-Object Name, Enabled | Sort-Object Name | ConvertTo-Json");
+  await runAndExpectSuccess(
+    "Get-RetentionCompliancePolicy | Select-Object Name, Enabled | Sort-Object Name | ConvertTo-Json",
+  );
 });
 
 // --- Group 6: Response Structure Validation ---
@@ -222,6 +230,30 @@ test("log shows failures", async () => {
   });
   const text = (result.content as Array<{ type: string; text: string }>).find((c) => c.type === "text")!.text;
   expect(text).toContain("\u274C");
+});
+
+// --- Group 7b: Environment Isolation (MSRC fix) ---
+
+test("DLM_UPN env var is not visible inside pwsh session", async () => {
+  // Sanity check: the parent Node process has DLM_UPN set
+  expect(process.env.DLM_UPN).toBeTruthy();
+  // pwsh subprocess must NOT see it (buildSafeEnv whitelist excludes DLM_*)
+  const output = await runAndExpectSuccess("(Get-ChildItem Env: | Where-Object { $_.Name -eq 'DLM_UPN' }).Count");
+  expect(output.trim()).toBe("0");
+});
+
+test("no DLM_* env vars leak into pwsh session", async () => {
+  const output = await runAndExpectSuccess("(Get-ChildItem Env: | Where-Object { $_.Name -like 'DLM_*' }).Count");
+  expect(output.trim()).toBe("0");
+});
+
+test("hardened runspace rejects Invoke-WebRequest when validation is bypassed via string concatenation", async () => {
+  // Build the cmdlet name at runtime so the TS verb-noun regex doesn't see
+  // 'Invoke-WebRequest' as a token. The validator passes; the runspace
+  // function override (Layer 2) must still throw.
+  const parsed = await runCommand("& ('Invoke' + '-WebRequest') -Uri http://example.com");
+  expect(parsed.success).toBe(false);
+  expect(parsed.error).toContain("Disabled by Purview DLM MCP security policy");
 });
 
 // --- Group 8: Ask Learn ---

