@@ -25,7 +25,8 @@ src/
 └── utils.ts                        # escapeForPs, tryParseJson, truncate
 tests/
 ├── unit/
-│   ├── cmdletAllowlist.test.ts     # ~23 tests
+│   ├── cmdletAllowlist.test.ts     # ~86 tests
+│   ├── executor.test.ts            # ~6 tests (runspace hardening + marker script)
 │   ├── outputParsers.test.ts       # ~29 tests
 │   ├── askLearn.test.ts            # ~10 tests
 │   ├── executionLog.test.ts        # ~5 tests
@@ -83,7 +84,7 @@ node dist/index.js                   # Start the MCP server
 ## Testing
 
 - **Test runner:** Vitest
-- **Unit tests (no EXO):** `cmdletAllowlist.test.ts`, `outputParsers.test.ts`, `askLearn.test.ts`, `executionLog.test.ts`, `githubAuth.test.ts`, `githubIssues.test.ts`, `telemetry.test.ts` — 107 tests
+- **Unit tests (no EXO):** `cmdletAllowlist.test.ts`, `executor.test.ts`, `outputParsers.test.ts`, `askLearn.test.ts`, `executionLog.test.ts`, `githubAuth.test.ts`, `githubIssues.test.ts`, `telemetry.test.ts` — 171 tests
 - **E2E tests (live EXO):** `endToEnd.test.ts` — 30 tests
 - **TSG integration tests (live EXO):** `tsgEvaluators.test.ts` — ~14 tests
 - **Environment variables:** Tests require `DLM_UPN` and `DLM_ORGANIZATION` for Exchange Online connectivity. `DLM_COMMAND_TIMEOUT_MS` optionally overrides the default command timeout (180 000 ms). `DLM_COLLECT_TELEMETRY` and `DLM_COLLECT_TELEMETRY_MICROSOFT` control telemetry (default: `true`).

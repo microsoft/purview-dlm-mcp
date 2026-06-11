@@ -35,7 +35,7 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 
 ## Running Tests
 
-The test suite uses Vitest and includes unit tests (67 tests, no Exchange Online required), E2E tests (30 tests), and TSG integration tests (~14 tests).
+The test suite uses Vitest and includes unit tests (171 tests, no Exchange Online required), E2E tests (~30 tests), and TSG integration tests (~14 tests).
 
 To run **unit tests only** (no Exchange Online connection needed):
 
