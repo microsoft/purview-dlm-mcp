@@ -67,6 +67,7 @@ Skills are self-contained diagnostic guides used by AI assistants:
 4. **Audit trail** — Every command and result is logged via `ExecutionLog` and retrievable through `get_execution_log`.
 5. **GitHub authentication** — `create_issue` authenticates via `DLM_GITHUB_TOKEN` env var or `gh auth token` CLI; no credentials are stored.
 6. **Telemetry** — 1P Application Insights only, no PII collected. Opt-out via `DLM_COLLECT_TELEMETRY=false` or `DLM_COLLECT_TELEMETRY_MICROSOFT=false`.
+7. **Remediation is manual only** — Diagnostic guides include remediation steps with mutating cmdlets. These must always be presented as text recommendations for the admin to copy and run manually. Never offer to execute them automatically.
 
 ## Development Commands
 

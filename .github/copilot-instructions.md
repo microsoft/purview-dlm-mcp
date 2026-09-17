@@ -35,6 +35,7 @@ MCP server enabling AI assistants to diagnose Microsoft Purview Data Lifecycle M
 - **Blocked verbs:** `Set-*`, `New-*`, `Remove-*`, `Enable-*`, `Start-*`, `Invoke-*`, `Disable-*`, `Stop-*`, `Add-*`, `Clear-*`, `Update-*`, `Register-*`, `Revoke-*`, `Grant-*`.
 - **Validation:** Every command is checked against `allowlist.ts` before execution. New cmdlets must be added to `ALLOWED_CMDLETS` explicitly.
 - **No stored credentials:** MSAL interactive browser auth only; tokens in-memory.
+- **Remediation is manual only:** Diagnostic guides include remediation steps with mutating cmdlets. These must always be presented as text recommendations for the admin to copy and run manually. Never offer to execute them automatically.
 
 ## Code Style
 

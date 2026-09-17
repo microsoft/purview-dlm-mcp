@@ -178,6 +178,8 @@ Run **all org-wide checks (1–10)** above first, then apply the following user-
 
 ## Resolution & Remediation — Scenario 1: All Users (Org-Wide)
 
+> **⚠️ Do not offer to execute these steps.** The resolutions below contain mutating commands (`Set-*`, `New-*`, `Remove-*`, etc.) that cannot be run through the MCP server. Present these as recommendations for the admin to review and run manually in their own PowerShell session.
+
 | ❌ Check | Root Cause | Resolution |
 |---|---|---|
 | 1 | Mailbox auditing disabled at org level | Admin should enable mailbox auditing: `Set-OrganizationConfig -AuditDisabled $false`. Note: it can take up to 24 hours to take effect |
@@ -194,6 +196,8 @@ Run **all org-wide checks (1–10)** above first, then apply the following user-
 ---
 
 ## Resolution & Remediation — Scenario 2: Specific User (Additional)
+
+> **⚠️ Do not offer to execute these steps.** The resolutions below contain mutating commands (`Set-*`, `New-*`, `Remove-*`, etc.) that cannot be run through the MCP server. Present these as recommendations for the admin to review and run manually in their own PowerShell session.
 
 Apply **all org-wide resolutions** from Scenario 1 first, then the following user-specific resolutions.
 

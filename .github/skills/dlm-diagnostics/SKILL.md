@@ -22,6 +22,8 @@ Connect-IPPSSession -UserPrincipalName '<admin@contoso.com>' -ShowBanner:$false
 
 **Never execute mutating commands** — `Set-*`, `New-*`, `Remove-*`, `Enable-*`, `Start-*`, `Invoke-*` cmdlets must only be returned as text recommendations for the admin to review and run manually.
 
+**Never offer to automatically apply remediation steps** — the MCP server enforces a read-only allowlist. All resolution steps that involve mutating cmdlets must be presented as manual guidance only. Do not ask the user if they want you to run them.
+
 ## Decision Tree
 
 Identify the reported symptom and load the matching reference:
@@ -49,7 +51,7 @@ If the issue does not match a specific symptom above, or for ad-hoc investigatio
 3. **Execute diagnostic commands** step by step using the `run_powershell` MCP tool, following the reference guide's sequence.
 4. **Interpret results** at each step — the reference guide explains what to look for and how each finding maps to a root cause.
 5. **Cross-reference** — some guides link to sibling references (e.g., policy distribution failures link to [policy-stuck-error.md](references/policy-stuck-error.md)). Load those when directed.
-6. **Report findings** — summarize the root cause, present the root-cause confirmation table, and provide the recommended remediation actions as text for the admin to review.
+6. **Report findings** — summarize the root cause, present the root-cause confirmation table, and provide the recommended remediation actions as **manual-only guidance** for the admin to review and run outside of this tool.
 7. **Review the execution log** — use the `get_execution_log` MCP tool to include a full audit trail of all commands run during the investigation.
 
 ## Output Format
@@ -74,7 +76,10 @@ Present findings to the user in this structure:
 
 ## Recommended Actions
 
-⚠️ These commands are NOT executed automatically. Review and run manually:
+> ⚠️ **Manual action required.** The commands below contain mutating operations that
+> cannot be executed through this MCP server. Copy and run them manually in your
+> own PowerShell session after reviewing each one.
+
 - <remediation command 1>
 - <remediation command 2>
 ```
