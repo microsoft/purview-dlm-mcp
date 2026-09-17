@@ -224,12 +224,33 @@ const typeMemberPattern = /\[[\w.]+\]\s*::/;
 const privateVarPattern = /\$_ippsToken\b/i;
 
 /**
+ * Matches `$ExecutionContext` — the canonical handle for runtime script execution
+ * via `$ExecutionContext.InvokeCommand.InvokeScript('…')`. That call builds a
+ * script block from a string at runtime, so the inner command is never visible
+ * to the verb-noun or call-operator regex. No legitimate read-only diagnostic
+ * command references this automatic variable, so blocking it has zero
+ * false-positive cost on the allowed cmdlet set.
+ */
+const executionContextPattern = /\$ExecutionContext\b/i;
+
+/**
  * Matches a dangerous alias as a standalone token: preceded by start-of-string
  * or an operator/whitespace, followed by whitespace, operator, or end-of-string.
  * Prevents false positives like `Get-IRMConfiguration` (where `IRM` is part of
  * a longer identifier) or `$iwr` (variable reference).
  */
 const aliasPattern = new RegExp(`(?:^|[\\s;|&({])(${dangerousAliases.join("|")})(?=[\\s;|&)}]|$)`, "i");
+
+/**
+ * Matches the call operator `&` or dot-source operator `.` applied to a
+ * parenthesized/computed expression, a variable, or a quoted string — e.g.
+ * `& ('Invoke' + '-RestMethod')`, `& $cmd`, `. ('iex')`. This is the canonical
+ * way to build a cmdlet name at runtime so the verb-noun token regex never sees
+ * it. The operator must sit at a command position (start of string, or after
+ * whitespace / `;` `|` `(` `{` `=`), so ordinary property access (`$_.Name`),
+ * decimals (`1.5`), and the range operator (`1..10`) are unaffected.
+ */
+const invocationOperatorPattern = /(?:^|[\s;|({=])[&.]\s*[("'$]/;
 
 export interface ValidationResult {
   valid: boolean;
@@ -276,6 +297,21 @@ export function validateCommand(command: string): ValidationResult {
     };
   }
 
+  // Block `$ExecutionContext` — the canonical handle for
+  // `$ExecutionContext.InvokeCommand.InvokeScript('...')`, which builds a
+  // script block from a string at runtime and is therefore invisible to the
+  // verb-noun and call-operator regexes. Same rationale as the call-operator
+  // check below (issue #44): the runspace no longer overrides
+  // Invoke-WebRequest / Invoke-RestMethod / Add-Type, so a runtime-constructed
+  // call to those primitives must be blocked at Layer 1.
+  if (executionContextPattern.test(command)) {
+    return {
+      valid: false,
+      violation: "Access to $ExecutionContext is not allowed",
+      blockedVerb: "execution-context",
+    };
+  }
+
   // Block high-risk aliases as standalone tokens (iwr, iex, etc.).
   const aliasMatch = command.match(aliasPattern);
   if (aliasMatch) {
@@ -283,6 +319,21 @@ export function validateCommand(command: string): ValidationResult {
       valid: false,
       violation: `Alias '${aliasMatch[1]}' is not allowed — use the full cmdlet name`,
       blockedVerb: "alias",
+    };
+  }
+
+  // Block the call/dot-source operators applied to a computed name, variable,
+  // or quoted string (e.g. `& ('Invoke' + '-RestMethod')`). This is the
+  // runtime-name-construction bypass the verb-noun regex below cannot catch.
+  // The runspace no longer overrides Invoke-WebRequest / Invoke-RestMethod /
+  // Add-Type (issue #44 — EXO v3 REST proxies need them), so this Layer-1 check
+  // is what keeps those obfuscated forms blocked.
+  if (invocationOperatorPattern.test(command)) {
+    return {
+      valid: false,
+      violation:
+        "Invoking a command via the call/dot-source operator (& or .) on a computed name, variable, or string is not allowed",
+      blockedVerb: "call-operator",
     };
   }
 

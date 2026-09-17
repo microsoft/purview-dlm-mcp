@@ -79,6 +79,75 @@ export interface PsJsonResult<T = unknown> {
   error?: string;
 }
 
+// ─── Runspace Hardening ───
+
+/**
+ * Cmdlets/functions that `hardenRunspace()` overrides with throwing stubs as a
+ * Layer-2 defense-in-depth measure (the cmdlet allowlist is Layer 1). Every
+ * name here is also rejected by `validateCommand`; the runspace override exists
+ * to catch obfuscated bypasses (e.g. `& ('Invoke' + '-Expression')`) that the
+ * Layer-1 regex cannot see.
+ *
+ * IMPORTANT (issue #44): this list must NOT contain `Invoke-WebRequest`,
+ * `Invoke-RestMethod`, or `Add-Type`. ExchangeOnlineManagement v3 generates
+ * client-side REST proxy functions for Get- and Test- cmdlets that call those
+ * primitives internally; overriding them with throwing stubs breaks every EXO
+ * and Security & Compliance cmdlet with a misleading "server side error".
+ */
+export const HARDENED_COMMAND_OVERRIDES = [
+  // NOTE: Invoke-WebRequest, Invoke-RestMethod, and Add-Type are deliberately
+  // NOT listed here (issue #44) — EXO v3 REST proxies call them internally.
+  // For user input they stay blocked by validateCommand at Layer 1: the literal
+  // tokens via its verb-prefix rules (invoke-/add-), and the call-operator
+  // obfuscation `& ('Invoke' + '-RestMethod')` via its call-operator check.
+  "Invoke-Expression",
+  "Invoke-Command",
+  "Start-Process",
+  "Connect-ExchangeOnline",
+  "Connect-IPPSSession",
+  "Disconnect-ExchangeOnline",
+  "Disconnect-IPPSSession",
+];
+
+/**
+ * Build the PowerShell statements that harden the long-lived runspace: remove
+ * high-risk aliases and override each entry in `HARDENED_COMMAND_OVERRIDES`
+ * with a function that throws. Pure (no I/O) so it can be unit-tested.
+ */
+export function buildHardeningStatements(): string[] {
+  const denyMsg = "Disabled by Purview DLM MCP security policy";
+  return [
+    "Remove-Item Alias:iwr, Alias:irm, Alias:iex, Alias:icm, Alias:curl, Alias:wget, Alias:saps -Force -ErrorAction SilentlyContinue",
+    ...HARDENED_COMMAND_OVERRIDES.map((name) => `function global:${name} { throw '${denyMsg}' }`),
+  ];
+}
+
+/**
+ * Build the marker-delimited script piped to the long-lived pwsh process for a
+ * single command. The command runs inside a try/catch whose catch emits a
+ * `PS_ERROR:` sentinel that `execute()` turns into `{ success: false }`; the
+ * trailing marker tells the stdout poller the command has finished.
+ *
+ * When `stopOnError` is true (user-supplied commands), `$ErrorActionPreference`
+ * is forced to 'Stop' so EXO's *non-terminating* `Write-Error` records are
+ * promoted to terminating errors and caught here, instead of being silently
+ * swallowed and reported as `{ success: true, output: "" }` (issue #44). It is
+ * left false for trusted init/internal commands, which run at top scope and
+ * must keep their default error semantics.
+ *
+ * Trade-off (deliberate): under 'Stop', a non-terminating error on one item in
+ * a multi-item command (e.g. `Get-Mailbox a,b,c` where `b` is invalid) aborts
+ * the whole command instead of returning partial results. For a diagnostics
+ * tool, surfacing the failure honestly is preferred over silent empty output.
+ */
+export function buildMarkedScript(command: string, marker: string, stopOnError = false): string {
+  const eap = stopOnError ? "$ErrorActionPreference = 'Stop'; " : "";
+  return (
+    `try { ${eap}${command} } catch { Write-Output "PS_ERROR: $($_.Exception.Message)" }; ` +
+    `Write-Output '${marker}'\n`
+  );
+}
+
 // ─── Executor ───
 
 /**
@@ -225,24 +294,7 @@ export class PsExecutor {
    * that survives any future validateCommand bypass.
    */
   private async hardenRunspace(): Promise<void> {
-    const overrides = [
-      "Invoke-WebRequest",
-      "Invoke-RestMethod",
-      "Invoke-Expression",
-      "Invoke-Command",
-      "Start-Process",
-      "Add-Type",
-      "Connect-ExchangeOnline",
-      "Connect-IPPSSession",
-      "Disconnect-ExchangeOnline",
-      "Disconnect-IPPSSession",
-    ];
-    const denyMsg = "Disabled by Purview DLM MCP security policy";
-    const statements: string[] = [
-      "Remove-Item Alias:iwr, Alias:irm, Alias:iex, Alias:icm, Alias:curl, Alias:wget, Alias:saps -Force -ErrorAction SilentlyContinue",
-      ...overrides.map((name) => `function global:${name} { throw '${denyMsg}' }`),
-    ];
-    await this.execRaw(statements.join("; "), 10_000);
+    await this.execRaw(buildHardeningStatements().join("; "), 10_000);
   }
 
   /* ───────── Token Acquisition ───────── */
@@ -357,7 +409,9 @@ export class PsExecutor {
       return { success: false, output: "", error: v.violation };
     }
     try {
-      const out = await this.execRaw(command);
+      // stopOnError=true: promote EXO's non-terminating Write-Error to a
+      // terminating error so it surfaces instead of returning empty output.
+      const out = await this.execRaw(command, COMMAND_TIMEOUT_MS, true);
       if (out.startsWith("PS_ERROR:")) {
         return { success: false, output: "", error: out.slice(10).trim() };
       }
@@ -380,16 +434,14 @@ export class PsExecutor {
 
   /* ───────── Internals ───────── */
 
-  private execRaw(command: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<string> {
+  private execRaw(command: string, timeoutMs = COMMAND_TIMEOUT_MS, stopOnError = false): Promise<string> {
     return new Promise((resolve, reject) => {
       if (!this.proc) return reject(new Error("No pwsh process"));
 
       const marker = `__MCP_END_${randomUUID()}__`;
       this.buf = "";
 
-      const script =
-        `try { ${command} } catch { Write-Output "PS_ERROR: $($_.Exception.Message)" }; ` +
-        `Write-Output '${marker}'\n`;
+      const script = buildMarkedScript(command, marker, stopOnError);
 
       const timeout = setTimeout(() => {
         this.telemetry?.trackEvent("CommandTimeout", {}, { timeoutMs });
