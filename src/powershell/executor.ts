@@ -3,7 +3,7 @@
 
 import { spawn, type ChildProcess } from "child_process";
 import { randomUUID } from "crypto";
-import { validateCommand } from "./allowlist.js";
+import { buildValidatedCommand, validateCommand } from "./allowlist.js";
 import { COMMAND_TIMEOUT_MS } from "../config.js";
 import type { Telemetry } from "../telemetry.js";
 
@@ -357,7 +357,7 @@ export class PsExecutor {
       return { success: false, output: "", error: v.violation };
     }
     try {
-      const out = await this.execRaw(command);
+      const out = await this.execRaw(buildValidatedCommand(command));
       if (out.startsWith("PS_ERROR:")) {
         return { success: false, output: "", error: out.slice(10).trim() };
       }

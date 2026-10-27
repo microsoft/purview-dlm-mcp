@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 import { describe, test, expect } from "vitest";
-import { validateCommand, allowedCmdlets } from "../../src/powershell/allowlist.js";
+import { execFileSync } from "child_process";
+import { validateCommand, allowedCmdlets, buildValidatedCommand } from "../../src/powershell/allowlist.js";
 
 describe("CmdletAllowlist", () => {
   test.each([
@@ -21,6 +22,136 @@ describe("CmdletAllowlist", () => {
   ])("allows whitelisted cmdlet: %s", (command) => {
     const result = validateCommand(command);
     expect(result.valid).toBe(true);
+  });
+
+  describe("PowerShell AST execution guard", () => {
+    function runGuarded(
+      command: string | string[],
+      setup = "",
+    ): { success: boolean; output?: unknown[]; error?: string } {
+      const commands = typeof command === "string" ? [command] : command;
+      const script = `
+        $ErrorActionPreference = 'Stop'
+        function Get-Mailbox {
+          [pscustomobject]@{ Name = 'test'; ArchiveStatus = 'Active'; ExchangeGuid = [guid]::Empty }
+        }
+        function Export-MailboxDiagnosticLogs {
+          [pscustomobject]@{ MailboxLog = '<Properties><Property Name="ELC">ready</Property></Properties>' }
+        }
+        function Remove-Item { Write-Output 'unexpected execution' }
+        function Unsafe { Write-Output 'unexpected callback' }
+        function Tee-Object {
+          param($FilePath, $Variable, [Parameter(ValueFromPipeline)] $InputObject)
+          process { $InputObject }
+        }
+        ${setup}
+        try {
+          $output = @(
+            ${commands.map(buildValidatedCommand).join("\n")}
+          )
+          @{ success = $true; output = $output } | ConvertTo-Json -Depth 10 -Compress
+        } catch {
+          @{ success = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
+        }
+      `;
+      const output = execFileSync(
+        "pwsh",
+        [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "& ([scriptblock]::Create([Console]::In.ReadToEnd()))",
+        ],
+        { input: script, encoding: "utf8", timeout: 15_000, windowsHide: true },
+      );
+      return JSON.parse(output.trim());
+    }
+
+    test.each([
+      "whoami",
+      "Get-Mailbox; whoami",
+      "Get-Mailbox | whoami",
+      "Get-Mailbox | ForEach-Object { whoami }",
+      'Write-Output "$(whoami)"',
+      "Write-Output (whoami)",
+      "rm unused",
+      "Get-Mailbox | % { del unused }",
+      "& ('Write-' + 'Output') 'bypass'",
+      "$cmd = 'Write-Output'; & $cmd bypass",
+      ". { Write-Output bypass }",
+      "Get-Com`mand",
+      "Get-Mailbox > $null",
+      "function Get-Mailbox { Write-Output bypass }",
+      "[scriptblock]'Write-Output bypass'",
+      "[System.Environment]::GetEnvironmentVariable('PATH')",
+      "(Get-Date).AddDays(1)",
+      "(Get-Date).('Add' + 'Days')(1)",
+      "$x = 'hello'; $x[0] = 'b'",
+      "Write-Output ${env:PATH}",
+      "Write-Output ${_ippsToken}",
+      "$PSDefaultParameterValues = @{}",
+      "Write-Output ready -OutVariable PSDefaultParameterValues",
+      "Get-Mailbox | ForEach-Object -MemberName ToString",
+      "Get-Mailbox | ForEach-Object ToString",
+      "'x' -replace 'x', (Get-ChildItem Function:Unsafe).ScriptBlock",
+      "Get-ChildItem Variable:",
+      "$filter = { $true }; Get-Mailbox | Where-Object $filter",
+      "$filter = { $true }; Get-Mailbox | Where-Object Name -FilterScript $filter",
+      "Write-Output ready | Tee-Object -FilePath unused.txt",
+      "Write-Output ready | Tee-Object -Variable PSDefaultParameterValues",
+      "#requires -Modules UnapprovedModule\nWrite-Output ready",
+      "Get-Mailbox &",
+      "Get-Mailbox; } catch {}; Write-Output bypass; #",
+    ])("rejects bypass before execution: %s", (command) => {
+      expect(runGuarded(command)).toMatchObject({
+        success: false,
+        error: expect.stringMatching(
+          /not in the allowlist|not allowed|only |requires |Invalid PowerShell syntax|Unsupported PowerShell syntax/i,
+        ),
+      });
+    });
+
+    test.each([
+      "Get-Mailbox | FL Name",
+      "Get-Mailbox | select Name | ConvertTo-Json",
+      "Get-Mailbox | Where-Object { $_.ArchiveStatus -eq 'Active' } | Measure-Object",
+      "Get-Mailbox | ? { $_.Name -eq 'test' } | % { $_.Name }",
+      "Get-Mailbox | Where-Object -FilterScript { $_.Name -eq 'test' }",
+      "Get-Mailbox | Where-Object Name -eq test",
+      "Get-Mailbox | ForEach-Object { $_.ExchangeGuid.ToString() }",
+      "$parts = 'a;b'.Split(';'); Write-Output $parts[0]",
+      "$logs = Export-MailboxDiagnosticLogs test; ([xml]$logs.MailboxLog).Properties.Property",
+      "Get-Mailbox | Select-Object @{ Name = 'Label'; Expression = { $_.Name } }",
+      "$sum = 0; foreach ($value in @(1, 2)) { if ($value -gt 0) { $sum += $value } }; Write-Output $sum",
+      "Get-Mailbox -Identity 'mailbox-prod-01@contoso.com'",
+      "(Get-ChildItem Env: | Where-Object { $_.Name -eq 'DLM_UPN' }).Count",
+      "Write-Output 'Get-Command; & whoami'",
+      'Write-Output "ready $(Get-Date -Format yyyy)"',
+      "Write-Output ready | Tee-Object -Variable diagnostic",
+      "Get-Mai`lbox",
+    ])("preserves diagnostic syntax: %s", (command) => {
+      const result = runGuarded(command);
+      expect(result, result.error).toMatchObject({ success: true });
+    });
+
+    test("preserves diagnostic variables across commands without exposing validator state", () => {
+      const result = runGuarded([
+        "$mailbox = Get-Mailbox",
+        "Write-Output $mailbox.Name; Write-Output ($null -eq $ast)",
+      ]);
+      expect(result).toEqual({ success: true, output: ["test", true] });
+    });
+
+    test.each([
+      "Remove-Alias -Name sort -Force -ErrorAction SilentlyContinue; function sort { Write-Output unexpected }",
+      "Set-Alias -Name sort -Value Write-Output -Force",
+    ])("rejects unavailable or retargeted aliases: %s", (setup) => {
+      expect(runGuarded("Get-Mailbox | sort Name", setup)).toMatchObject({
+        success: false,
+        error: "Alias 'sort' is not allowed in this session; use 'sort-object'",
+      });
+    });
   });
 
   test.each([

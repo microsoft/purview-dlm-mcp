@@ -322,3 +322,155 @@ export function validateCommand(command: string): ValidationResult {
 
   return { valid: true };
 }
+
+/**
+ * Parse and validate in the existing PowerShell process, then execute that exact
+ * AST. Encoding keeps user text out of the trusted wrapper's PowerShell syntax.
+ */
+export function buildValidatedCommand(command: string): string {
+  const encoded = Buffer.from(command, "utf8").toString("base64");
+  const names = [...allowedCmdlets, ...safeBuiltins].map((name) => `'${name}'`).join(",");
+
+  // The parser runs in a child scope; dot-sourcing only the validated result
+  // preserves diagnostic variables across execute() calls, not validator state.
+  return `. (& {
+    $text = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encoded}'))
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$parseErrors)
+    if ($parseErrors.Count) { throw 'Invalid PowerShell syntax' }
+    $allowed = @(${names})
+    $aliases = @{
+      fl = 'format-list'; ft = 'format-table'; select = 'select-object'
+      where = 'where-object'; '?' = 'where-object'
+      foreach = 'foreach-object'; '%' = 'foreach-object'
+      sort = 'sort-object'; group = 'group-object'; measure = 'measure-object'
+      gm = 'get-member'; gci = 'get-childitem'; dir = 'get-childitem'; ls = 'get-childitem'
+      echo = 'write-output'; write = 'write-output'; tee = 'tee-object'
+    }
+    $nodeTypes = @(
+      'ScriptBlockAst', 'NamedBlockAst', 'StatementBlockAst', 'PipelineAst',
+      'CommandAst', 'CommandParameterAst', 'CommandExpressionAst',
+      'StringConstantExpressionAst', 'ExpandableStringExpressionAst',
+      'ConstantExpressionAst', 'VariableExpressionAst', 'MemberExpressionAst',
+      'InvokeMemberExpressionAst', 'BinaryExpressionAst', 'UnaryExpressionAst',
+      'ParenExpressionAst', 'SubExpressionAst', 'ArrayExpressionAst',
+      'ArrayLiteralAst', 'HashtableAst', 'ScriptBlockExpressionAst',
+      'AssignmentStatementAst', 'ConvertExpressionAst', 'TypeConstraintAst',
+      'IndexExpressionAst', 'IfStatementAst', 'ForEachStatementAst',
+      'BreakStatementAst', 'ContinueStatementAst', 'ReturnStatementAst'
+    )
+    $reserved = '^(?:_ippsToken|ExecutionContext|Host|Error|MyInvocation|args|input|OFS|OutputEncoding|PSDefaultParameterValues|.*Preference)$'
+    foreach ($node in $ast.FindAll({ param($n) $true }, $true)) {
+      $kind = $node.GetType().Name
+      if ($kind -notin $nodeTypes) { throw "Unsupported PowerShell syntax: $kind" }
+      switch ($kind) {
+        ScriptBlockAst {
+          if ($null -ne $node.ScriptRequirements) { throw 'PowerShell requirements are not allowed' }
+        }
+        PipelineAst {
+          if ($node.Background) { throw 'Background execution is not allowed' }
+        }
+        CommandAst {
+          $name = $node.GetCommandName()
+          if ($node.InvocationOperator -ne 'Unknown' -or -not $name) {
+            throw 'Dynamic invocation and dot sourcing are not allowed'
+          }
+          $name = $name.ToLowerInvariant()
+          if ($aliases.ContainsKey($name)) {
+            $alias = $ExecutionContext.InvokeCommand.GetCommand($name, [System.Management.Automation.CommandTypes]::Alias)
+            if ($null -eq $alias -or $alias.ResolvedCommand.Name -ine $aliases[$name]) {
+              throw "Alias '$name' is not allowed in this session; use '$($aliases[$name])'"
+            }
+            $name = $aliases[$name]
+          }
+          if ($name -notin $allowed) { throw "Unknown cmdlet: $name - not in the allowlist" }
+          $elements = @($node.CommandElements | Select-Object -Skip 1)
+          if ($name -eq 'get-childitem' -and
+              -not ($elements.Count -eq 1 -and
+                $elements[0] -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                $elements[0].Value -eq 'Env:')) {
+            throw 'Get-ChildItem only supports the isolated Env: provider, not session functions or variables'
+          }
+          if ($name -eq 'foreach-object') {
+            foreach ($element in $elements) {
+              if ($element -is [System.Management.Automation.Language.ScriptBlockExpressionAst]) { continue }
+              if ($element -is [System.Management.Automation.Language.CommandParameterAst] -and
+                  $element.ParameterName -in @('Begin', 'Process', 'End') -and
+                  ($null -eq $element.Argument -or
+                   $element.Argument -is [System.Management.Automation.Language.ScriptBlockExpressionAst])) { continue }
+              throw 'ForEach-Object requires literal scriptblocks; member invocation is not allowed'
+            }
+          }
+          if ($name -eq 'where-object') {
+            $first = $elements[0]
+            $literalFilter = $elements.Count -eq 1 -and
+              $first -is [System.Management.Automation.Language.ScriptBlockExpressionAst]
+            $namedFilter = $first -is [System.Management.Automation.Language.CommandParameterAst] -and
+              $first.ParameterName -eq 'FilterScript' -and
+              (($elements.Count -eq 2 -and $null -eq $first.Argument -and
+                $elements[1] -is [System.Management.Automation.Language.ScriptBlockExpressionAst]) -or
+               ($elements.Count -eq 1 -and
+                $first.Argument -is [System.Management.Automation.Language.ScriptBlockExpressionAst]))
+            $propertyFilter = $first -is [System.Management.Automation.Language.StringConstantExpressionAst]
+            foreach ($element in $elements) {
+              if ($element -is [System.Management.Automation.Language.CommandParameterAst] -and
+                  'FilterScript'.StartsWith($element.ParameterName, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $propertyFilter = $false
+              }
+            }
+            if (-not ($literalFilter -or $namedFilter -or $propertyFilter)) {
+              throw 'Where-Object requires a literal filter scriptblock or property name'
+            }
+          }
+          if ($name -eq 'tee-object' -and
+              -not ($elements.Count -eq 2 -and
+                $elements[0] -is [System.Management.Automation.Language.CommandParameterAst] -and
+                $elements[0].ParameterName -eq 'Variable' -and $null -eq $elements[0].Argument -and
+                $elements[1] -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                $elements[1].Value -match '^[a-zA-Z_]\\w*$' -and $elements[1].Value -notmatch $reserved)) {
+            throw 'Tee-Object only supports a local diagnostic variable'
+          }
+        }
+        CommandParameterAst {
+          foreach ($parameter in @('OutVariable', 'ErrorVariable', 'WarningVariable', 'InformationVariable', 'PipelineVariable')) {
+            if ($parameter.StartsWith($node.ParameterName, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $node.ParameterName -in @('ov', 'ev', 'wv', 'iv', 'pv')) {
+              throw 'Output-variable parameters are not allowed; use a local assignment'
+            }
+          }
+        }
+        VariableExpressionAst {
+          if ($node.Splatted -or -not $node.VariablePath.IsUnqualified -or
+              $node.VariablePath.UserPath -match $reserved) {
+            throw 'Scoped, private, session-control and splatted variables are not allowed'
+          }
+        }
+        AssignmentStatementAst {
+          if ($node.Left -isnot [System.Management.Automation.Language.VariableExpressionAst]) {
+            throw 'Only local diagnostic variable assignments are allowed'
+          }
+        }
+        UnaryExpressionAst {
+          if ($node.TokenKind -match 'PlusPlus|MinusMinus') { throw 'Increment and decrement are not allowed' }
+        }
+        TypeConstraintAst {
+          if ($node.TypeName.FullName -notin @('xml', 'string', 'int', 'long', 'bool', 'double', 'decimal', 'datetime', 'guid', 'pscustomobject')) {
+            throw 'Only diagnostic data casts are allowed'
+          }
+        }
+        MemberExpressionAst {
+          if ($node.Static -or $node.Member -isnot [System.Management.Automation.Language.StringConstantExpressionAst]) {
+            throw 'Static and dynamic member access are not allowed'
+          }
+        }
+        InvokeMemberExpressionAst {
+          if ($node.Static -or $node.Member -isnot [System.Management.Automation.Language.StringConstantExpressionAst] -or
+              $node.Member.Value -notin @('ToString', 'Split')) {
+            throw 'Only diagnostic ToString and Split method calls are allowed'
+          }
+        }
+      }
+    }
+    $ast.GetScriptBlock()
+  })`;
+}

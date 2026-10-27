@@ -247,13 +247,10 @@ test("no DLM_* env vars leak into pwsh session", async () => {
   expect(output.trim()).toBe("0");
 });
 
-test("hardened runspace rejects Invoke-WebRequest when validation is bypassed via string concatenation", async () => {
-  // Build the cmdlet name at runtime so the TS verb-noun regex doesn't see
-  // 'Invoke-WebRequest' as a token. The validator passes; the runspace
-  // function override (Layer 2) must still throw.
+test("AST validation rejects string-concatenated invocation before execution", async () => {
   const parsed = await runCommand("& ('Invoke' + '-WebRequest') -Uri http://example.com");
   expect(parsed.success).toBe(false);
-  expect(parsed.error).toContain("Disabled by Purview DLM MCP security policy");
+  expect(parsed.error).toContain("Dynamic invocation");
 });
 
 // --- Group 8: Ask Learn ---
