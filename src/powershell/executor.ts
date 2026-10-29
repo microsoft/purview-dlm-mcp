@@ -3,7 +3,7 @@
 
 import { spawn, type ChildProcess } from "child_process";
 import { randomUUID } from "crypto";
-import { buildValidatedCommand, validateCommand } from "./allowlist.js";
+import { buildValidatedCommand, guardAliases, validateCommand } from "./allowlist.js";
 import { COMMAND_TIMEOUT_MS } from "../config.js";
 import type { Telemetry } from "../telemetry.js";
 
@@ -234,8 +234,9 @@ export class PsExecutor {
 
   /**
    * Lock down the long-lived pwsh session before user commands can run.
-   * Removes high-risk aliases and overrides dangerous cmdlets with functions
-   * that throw. This is the Node-spawned equivalent of TypeAgent's
+   * Disables native executables and scripts, removes every alias outside the
+   * guard's mapped set, and overrides dangerous cmdlets with functions that
+   * throw. This is the Node-spawned equivalent of TypeAgent's
    * `InitialSessionState.Commands.Remove()` approach: a defense-in-depth layer
    * that survives any future validateCommand bypass.
    */
@@ -255,8 +256,21 @@ export class PsExecutor {
       "Invoke-History",
     ];
     const denyMsg = "Disabled by Purview DLM MCP security policy";
+    const keptAliases = Object.keys(guardAliases)
+      .map((alias) => `'${alias}'`)
+      .join(",");
     const statements: string[] = [
-      "Remove-Item Alias:iwr, Alias:irm, Alias:iex, Alias:icm, Alias:curl, Alias:wget, Alias:saps, Alias:h, Alias:history, Alias:ghy, Alias:r -Force -ErrorAction SilentlyContinue",
+      // Native executables and script files can no longer be resolved by name
+      // or path (pwsh, cmd, whoami, full .exe paths). Defense in depth only:
+      // code that bypasses the AST guard can still reach .NET, COM, modules,
+      // and jobs, so the guard remains the security boundary.
+      "$ExecutionContext.SessionState.Applications.Clear()",
+      "$ExecutionContext.SessionState.Scripts.Clear()",
+      // Import the core modules first so autoloading during the sweep cannot
+      // add aliases after it, then remove every alias the guard does not map
+      // (gc, ni, cp, del, ri, iex, ...).
+      "Import-Module Microsoft.PowerShell.Management, Microsoft.PowerShell.Utility",
+      `@(Get-Alias) | Where-Object { $_.Name -notin @(${keptAliases}) } | ForEach-Object { Remove-Item -LiteralPath ("Alias:" + $_.Name) -Force -ErrorAction SilentlyContinue }`,
       ...overrides.map((name) => `function global:${name} { throw '${denyMsg}' }`),
     ];
     await this.execRaw(statements.join("; "), 10_000);
@@ -405,9 +419,13 @@ export class PsExecutor {
       const marker = `__MCP_END_${randomUUID()}__`;
       this.buf = "";
 
+      // `pwsh -Command -` reads stdin like an interactive prompt: a statement
+      // spanning several lines (such as buildValidatedCommand's wrapper) only
+      // runs once a blank line follows it. Without the trailing blank line the
+      // command never executes and every call times out.
       const script =
         `try { ${command} } catch { Write-Output "PS_ERROR: $($_.Exception.Message)" }; ` +
-        `Write-Output '${marker}'\n`;
+        `Write-Output '${marker}'\n\n`;
 
       // A timed-out command keeps running in the shared pwsh process, and its
       // late output would surface inside the next command's result. Kill the

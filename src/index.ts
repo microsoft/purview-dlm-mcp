@@ -56,7 +56,9 @@ async function main(): Promise<void> {
       "e.g., retention policy not applying, items not archiving, mailbox not becoming inactive, " +
       "policy stuck in Error, Teams messages not deleting, SubstrateHolds growing. " +
       "Examples: Get-RetentionCompliancePolicy, Get-Mailbox, Get-MailboxStatistics, Get-ComplianceTag. " +
-      "Only Get-*/Test-*/Export-* cmdlets are allowed; mutating commands are blocked. " +
+      "Only a fixed allowlist of read-only cmdlets plus formatting cmdlets (Select-Object, Where-Object, Format-List, ...) " +
+      "is allowed. Native executables, scripts, redirection, dynamic invocation, and aliases other than fl/ft/select/where/sort " +
+      "are rejected. " +
       "Returns JSON: { success, output, error, durationMs, logIndex }.",
     {
       command: z

@@ -236,7 +236,8 @@ The server is a TypeScript/Node.js application built with the `@modelcontextprot
 
 ## Security Model
 
-- **Read-only allowlist** — only `Get-*`, `Test-*`, and `Export-*` cmdlets are permitted; mutating commands are rejected before reaching PowerShell
+- **Read-only allowlist** — every command is parsed with the PowerShell parser and must use only a fixed allowlist of read-only Exchange Online / Security & Compliance cmdlets plus formatting cmdlets. Native executables, scripts, redirection, dynamic invocation, .NET method calls, and unmapped aliases are rejected before execution
+- **Hardened session (defense in depth)** — the session no longer resolves native executables or script files by name or path, removes aliases outside a small formatting set, and shadows high-risk cmdlets. This raises the bar for a validation bypass but is not a sandbox; the allowlist above is the security boundary
 - **No stored credentials** — authentication uses MSAL interactive flow; no passwords or tokens are persisted
 - **Session isolation** — each server instance runs its own PowerShell process with independent session state
 - **Telemetry** — 1P Application Insights only, no PII collected, opt-out via `DLM_COLLECT_TELEMETRY=false`
