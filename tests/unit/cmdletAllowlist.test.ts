@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import { describe, test, expect } from "vitest";
-import { execFileSync } from "child_process";
+import { spawn } from "child_process";
 import { validateCommand, allowedCmdlets, buildValidatedCommand } from "../../src/powershell/allowlist.js";
 
 describe("CmdletAllowlist", () => {
@@ -25,10 +25,38 @@ describe("CmdletAllowlist", () => {
   });
 
   describe("PowerShell AST execution guard", () => {
-    function runGuarded(
+    // Async so the Vitest worker's event loop stays free to report progress;
+    // ~130 synchronous pwsh launches starved its RPC and failed CI with
+    // "Timeout calling onTaskUpdate".
+    function runPwsh(script: string): Promise<string> {
+      return new Promise((resolve, reject) => {
+        const child = spawn(
+          "pwsh",
+          [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "& ([scriptblock]::Create([Console]::In.ReadToEnd()))",
+          ],
+          { windowsHide: true, timeout: 15_000 },
+        );
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
+        child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+        child.on("error", reject);
+        child.on("close", (code) =>
+          code === 0 ? resolve(stdout) : reject(new Error(`pwsh exited ${code}: ${stderr}`)),
+        );
+        child.stdin.end(script);
+      });
+    }
+
+    async function runGuarded(
       command: string | string[],
       setup = "",
-    ): { success: boolean; output?: unknown[]; error?: string } {
+    ): Promise<{ success: boolean; output?: unknown[]; error?: string }> {
       const commands = typeof command === "string" ? [command] : command;
       const script = `
         $ErrorActionPreference = 'Stop'
@@ -54,17 +82,7 @@ describe("CmdletAllowlist", () => {
           @{ success = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
         }
       `;
-      const output = execFileSync(
-        "pwsh",
-        [
-          "-NoLogo",
-          "-NoProfile",
-          "-NonInteractive",
-          "-Command",
-          "& ([scriptblock]::Create([Console]::In.ReadToEnd()))",
-        ],
-        { input: script, encoding: "utf8", timeout: 15_000, windowsHide: true },
-      );
+      const output = await runPwsh(script);
       return JSON.parse(output.trim());
     }
 
@@ -103,8 +121,23 @@ describe("CmdletAllowlist", () => {
       "#requires -Modules UnapprovedModule\nWrite-Output ready",
       "Get-Mailbox &",
       "Get-Mailbox; } catch {}; Write-Output bypass; #",
-    ])("rejects bypass before execution: %s", (command) => {
-      expect(runGuarded(command)).toMatchObject({
+      // Hyphen-less aliases and native binaries (CWE-78)
+      "gc ~/.ssh/id_rsa",
+      "cat unused",
+      "type unused",
+      "sls pattern unused",
+      "bash -c id",
+      "cmd /c dir",
+      // History aliases that could expose the token sent during init (CWE-532)
+      "h | Format-List CommandLine",
+      "history",
+      "ghy",
+      "r 1",
+      // -as invokes a type's string constructor, e.g. StreamWriter creates/truncates a file
+      "'unused.txt' -as 'System.IO.StreamWriter'",
+      "('C:/Windows' -as 'System.IO.DirectoryInfo').FullName",
+    ])("rejects bypass before execution: %s", async (command) => {
+      expect(await runGuarded(command)).toMatchObject({
         success: false,
         error: expect.stringMatching(
           /not in the allowlist|not allowed|only |requires |Invalid PowerShell syntax|Unsupported PowerShell syntax/i,
@@ -130,13 +163,13 @@ describe("CmdletAllowlist", () => {
       'Write-Output "ready $(Get-Date -Format yyyy)"',
       "Write-Output ready | Tee-Object -Variable diagnostic",
       "Get-Mai`lbox",
-    ])("preserves diagnostic syntax: %s", (command) => {
-      const result = runGuarded(command);
+    ])("preserves diagnostic syntax: %s", async (command) => {
+      const result = await runGuarded(command);
       expect(result, result.error).toMatchObject({ success: true });
     });
 
-    test("preserves diagnostic variables across commands without exposing validator state", () => {
-      const result = runGuarded([
+    test("preserves diagnostic variables across commands without exposing validator state", async () => {
+      const result = await runGuarded([
         "$mailbox = Get-Mailbox",
         "Write-Output $mailbox.Name; Write-Output ($null -eq $ast)",
       ]);
@@ -146,8 +179,8 @@ describe("CmdletAllowlist", () => {
     test.each([
       "Remove-Alias -Name sort -Force -ErrorAction SilentlyContinue; function sort { Write-Output unexpected }",
       "Set-Alias -Name sort -Value Write-Output -Force",
-    ])("rejects unavailable or retargeted aliases: %s", (setup) => {
-      expect(runGuarded("Get-Mailbox | sort Name", setup)).toMatchObject({
+    ])("rejects unavailable or retargeted aliases: %s", async (setup) => {
+      expect(await runGuarded("Get-Mailbox | sort Name", setup)).toMatchObject({
         success: false,
         error: "Alias 'sort' is not allowed in this session; use 'sort-object'",
       });
