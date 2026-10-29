@@ -133,6 +133,14 @@ describe("CmdletAllowlist", () => {
       "history",
       "ghy",
       "r 1",
+      // MSRC report against 2.1.1: aliases, chaining, redirection, and child pwsh
+      "ni unused.txt -Value payload",
+      "cp unused.txt copied.txt",
+      "ri unused.txt",
+      "Get-Date > unused.txt",
+      "Get-Date >> unused.txt",
+      "pwsh -EncodedCommand dwBoAG8AYQBtAGkA",
+      "Get-Date; whoami",
       // -as invokes a type's string constructor, e.g. StreamWriter creates/truncates a file
       "'unused.txt' -as 'System.IO.StreamWriter'",
       "('C:/Windows' -as 'System.IO.DirectoryInfo').FullName",

@@ -324,12 +324,40 @@ export function validateCommand(command: string): ValidationResult {
 }
 
 /**
+ * The only aliases a command may use, mapped to the cmdlet each must resolve
+ * to. The guard rejects every other alias, and the hardened runspace removes
+ * every other alias (`executor.ts`).
+ */
+export const guardAliases: Readonly<Record<string, string>> = {
+  fl: "format-list",
+  ft: "format-table",
+  select: "select-object",
+  where: "where-object",
+  "?": "where-object",
+  foreach: "foreach-object",
+  "%": "foreach-object",
+  sort: "sort-object",
+  group: "group-object",
+  measure: "measure-object",
+  gm: "get-member",
+  gci: "get-childitem",
+  dir: "get-childitem",
+  ls: "get-childitem",
+  echo: "write-output",
+  write: "write-output",
+  tee: "tee-object",
+};
+
+/**
  * Parse and validate in the existing PowerShell process, then execute that exact
  * AST. Encoding keeps user text out of the trusted wrapper's PowerShell syntax.
  */
 export function buildValidatedCommand(command: string): string {
   const encoded = Buffer.from(command, "utf8").toString("base64");
   const names = [...allowedCmdlets, ...safeBuiltins].map((name) => `'${name}'`).join(",");
+  const aliases = Object.entries(guardAliases)
+    .map(([alias, target]) => `'${alias}' = '${target}'`)
+    .join("; ");
 
   // The parser runs in a child scope; dot-sourcing only the validated result
   // preserves diagnostic variables across execute() calls, not validator state.
@@ -339,14 +367,7 @@ export function buildValidatedCommand(command: string): string {
     $ast = [System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$parseErrors)
     if ($parseErrors.Count) { throw 'Invalid PowerShell syntax' }
     $allowed = @(${names})
-    $aliases = @{
-      fl = 'format-list'; ft = 'format-table'; select = 'select-object'
-      where = 'where-object'; '?' = 'where-object'
-      foreach = 'foreach-object'; '%' = 'foreach-object'
-      sort = 'sort-object'; group = 'group-object'; measure = 'measure-object'
-      gm = 'get-member'; gci = 'get-childitem'; dir = 'get-childitem'; ls = 'get-childitem'
-      echo = 'write-output'; write = 'write-output'; tee = 'tee-object'
-    }
+    $aliases = @{ ${aliases} }
     $nodeTypes = @(
       'ScriptBlockAst', 'NamedBlockAst', 'StatementBlockAst', 'PipelineAst',
       'CommandAst', 'CommandParameterAst', 'CommandExpressionAst',

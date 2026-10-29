@@ -29,7 +29,7 @@ tests/
 │   ├── outputParsers.test.ts       # ~29 tests
 │   ├── askLearn.test.ts            # ~10 tests
 │   ├── executionLog.test.ts        # ~5 tests
-│   ├── executorTimeout.test.ts     # ~1 test (requires pwsh)
+│   ├── executorHardening.test.ts   # ~3 tests (requires pwsh)
 │   ├── githubAuth.test.ts          # ~8 tests
 │   ├── githubIssues.test.ts        # ~10 tests
 │   └── telemetry.test.ts           # ~17 tests
@@ -62,7 +62,7 @@ Skills are self-contained diagnostic guides used by AI assistants:
 
 ## Security Model
 
-1. **Read-only allowlist** — Only `Get-*`, `Test-*`, `Export-*` cmdlets may be executed. All `Set-*`, `New-*`, `Remove-*`, `Enable-*`, `Start-*`, `Invoke-*` are blocked at the validation layer (`allowlist.ts`). `buildValidatedCommand` re-parses every command with the PowerShell AST inside the session and rejects anything outside the allowlist: unmapped aliases, native binaries, dynamic invocation, redirection, the `-as` operator, and file-writing parameters.
+1. **Read-only allowlist** — Only `Get-*`, `Test-*`, `Export-*` cmdlets may be executed. All `Set-*`, `New-*`, `Remove-*`, `Enable-*`, `Start-*`, `Invoke-*` are blocked at the validation layer (`allowlist.ts`). `buildValidatedCommand` re-parses every command with the PowerShell AST inside the session and rejects anything outside the allowlist: unmapped aliases, native binaries, dynamic invocation, redirection, the `-as` operator, and file-writing parameters. `hardenRunspace` also clears `SessionState.Applications`/`Scripts` (no native executables or child processes) and removes every alias outside `guardAliases`.
 2. **No stored credentials** — Authentication uses MSAL interactive browser flow via a subprocess that loads the MSAL DLL from ExchangeOnlineManagement; tokens are in-memory only.
 3. **Session isolation** — Each MCP server instance runs its own PowerShell process with its own session.
 4. **Audit trail** — Every command and result is logged via `ExecutionLog` and retrievable through `get_execution_log`.
