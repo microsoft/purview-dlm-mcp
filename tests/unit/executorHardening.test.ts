@@ -62,7 +62,7 @@ describe("PsExecutor runspace hardening", () => {
     for (const command of ["whoami", "pwsh -NoProfile -Command 1", "cmd /c ver"]) {
       expect(await internals.execRaw(command)).toMatch(/^PS_ERROR: .*not recognized/);
     }
-    for (const alias of ["gc", "cat", "ni", "cp", "del", "ri", "iex", "h", "r"]) {
+    for (const alias of ["gc", "cat", "ni", "cp", "del", "ri", "iex", "h", "r", "gcb", "gin", "scb"]) {
       expect(await internals.execRaw(`Get-Alias -Name '${alias}' -ErrorAction SilentlyContinue`)).toBe("");
     }
     expect(await internals.execRaw("Invoke-Expression 'whoami'")).toContain("Disabled by Purview DLM MCP");

@@ -260,13 +260,17 @@ export class PsExecutor {
       .map((alias) => `'${alias}'`)
       .join(",");
     const statements: string[] = [
-      // Native executables and script files can no longer be resolved, so no
-      // child process (pwsh, cmd, whoami, ...) can be launched from the session
-      // even if the AST guard is bypassed. Cmdlets and functions are unaffected.
+      // Native executables and script files can no longer be resolved by name
+      // or path (pwsh, cmd, whoami, full .exe paths). Defense in depth only:
+      // code that bypasses the AST guard can still reach .NET, COM, modules,
+      // and jobs, so the guard remains the security boundary.
       "$ExecutionContext.SessionState.Applications.Clear()",
       "$ExecutionContext.SessionState.Scripts.Clear()",
-      // Remove every alias the guard does not map (gc, ni, cp, del, ri, iex, ...).
-      `Get-Alias | Where-Object { $_.Name -notin @(${keptAliases}) } | ForEach-Object { Remove-Item -LiteralPath ("Alias:" + $_.Name) -Force -ErrorAction SilentlyContinue }`,
+      // Import the core modules first so autoloading during the sweep cannot
+      // add aliases after it, then remove every alias the guard does not map
+      // (gc, ni, cp, del, ri, iex, ...).
+      "Import-Module Microsoft.PowerShell.Management, Microsoft.PowerShell.Utility",
+      `@(Get-Alias) | Where-Object { $_.Name -notin @(${keptAliases}) } | ForEach-Object { Remove-Item -LiteralPath ("Alias:" + $_.Name) -Force -ErrorAction SilentlyContinue }`,
       ...overrides.map((name) => `function global:${name} { throw '${denyMsg}' }`),
     ];
     await this.execRaw(statements.join("; "), 10_000);
