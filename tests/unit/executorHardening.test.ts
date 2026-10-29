@@ -74,7 +74,8 @@ describe("PsExecutor runspace hardening", () => {
     await internals.hardenRunspace();
 
     expect(await internals.execRaw("Get-Date -Year 2026 -Format yyyy")).toBe("2026");
-    expect(await internals.execRaw("@(3, 1, 2) | sort | select -First 1")).toBe("1");
+    // `sort`, `ls`, `tee` and `write` are not aliases on Linux/macOS pwsh; use cross-platform ones.
+    expect(await internals.execRaw("@(3, 1, 2) | Sort-Object | select -First 1")).toBe("1");
     expect(await internals.execRaw("(Get-Alias -Name fl).ResolvedCommand.Name")).toBe("Format-List");
 
     // The AST guard itself runs inside the hardened session.
