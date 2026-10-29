@@ -20,6 +20,11 @@ describe("OutputParsers", () => {
     expect(stripAnsi(input)).toBe("Name : TestPolicy");
   });
 
+  test("stripAnsi removes non-color CSI sequences pwsh emits on Linux", () => {
+    expect(stripAnsi("\u001b[?1lPS_ERROR: boom")).toBe("PS_ERROR: boom");
+    expect(stripAnsi("\u001b[?25h\u001b[2K2026")).toBe("2026");
+  });
+
   test("stripAnsi preserves plain text", () => {
     expect(stripAnsi("Hello World")).toBe("Hello World");
   });
