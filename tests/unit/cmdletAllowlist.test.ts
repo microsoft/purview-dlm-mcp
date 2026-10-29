@@ -103,6 +103,21 @@ describe("CmdletAllowlist", () => {
       "#requires -Modules UnapprovedModule\nWrite-Output ready",
       "Get-Mailbox &",
       "Get-Mailbox; } catch {}; Write-Output bypass; #",
+      // Hyphen-less aliases and native binaries (CWE-78)
+      "gc ~/.ssh/id_rsa",
+      "cat unused",
+      "type unused",
+      "sls pattern unused",
+      "bash -c id",
+      "cmd /c dir",
+      // History aliases that could expose the token sent during init (CWE-532)
+      "h | Format-List CommandLine",
+      "history",
+      "ghy",
+      "r 1",
+      // -as invokes a type's string constructor, e.g. StreamWriter creates/truncates a file
+      "'unused.txt' -as 'System.IO.StreamWriter'",
+      "('C:/Windows' -as 'System.IO.DirectoryInfo').FullName",
     ])("rejects bypass before execution: %s", (command) => {
       expect(runGuarded(command)).toMatchObject({
         success: false,

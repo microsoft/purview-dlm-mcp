@@ -64,6 +64,9 @@ function buildSafeEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+const SESSION_TERMINATED =
+  "The PowerShell session was terminated so a late result cannot mix with later output. Restart the MCP server to reconnect.";
+
 // ─── Types ───
 
 export interface PsResult {
@@ -91,6 +94,7 @@ export class PsExecutor {
   private proc: ChildProcess | null = null;
   private buf = "";
   private ready = false;
+  private terminated = false;
   private telemetry?: Telemetry;
 
   get isReady(): boolean {
@@ -144,18 +148,20 @@ export class PsExecutor {
       process.stderr.write("[PsExecutor] Acquiring access token (browser will open)\u2026\n");
       const token = await this.acquireAccessToken("https://outlook.office365.com/.default", upn, org, 300_000);
 
-      // Step 2: Connect Exchange Online with the token
+      // Step 2: Connect Exchange Online with the token. The token literal is
+      // sent exactly once, into a variable, so it appears in a single history
+      // entry that Step 4 clears.
       lastStage = "exo-connect";
       process.stderr.write("[PsExecutor] Connecting to Exchange Online\u2026\n");
+      await this.execRaw(`$_ippsToken = '${token}'`, 5_000);
       await this.execRaw(
-        `Connect-ExchangeOnline -AccessToken '${token}' ` + `-Organization '${this.escape(org)}' -ShowBanner:$false`,
+        `Connect-ExchangeOnline -AccessToken $_ippsToken ` + `-Organization '${this.escape(org)}' -ShowBanner:$false`,
         120_000,
       );
 
       // Step 3: Connect IPPSSession with the same token
       lastStage = "ipps-connect";
       process.stderr.write("[PsExecutor] Connecting to Security & Compliance (IPPSSession)\u2026\n");
-      await this.execRaw(`$_ippsToken = '${token}'`, 5_000);
       const sccCmdlets = [
         "Get-RetentionCompliancePolicy",
         "Get-RetentionComplianceRule",
@@ -173,10 +179,11 @@ export class PsExecutor {
       // Step 4: Scrub the access token from session scope. Connect-IPPSSession
       // only needs the token at connection time; afterwards the session uses
       // its own internal credential cache. Removing the variable prevents any
-      // future allowlist bypass from exfiltrating `$_ippsToken`.
+      // future allowlist bypass from exfiltrating `$_ippsToken`, and clearing
+      // history removes the `$_ippsToken = '<token>'` command line itself.
       lastStage = "token-scrub";
       await this.execRaw(
-        "Remove-Variable _ippsToken -Force -ErrorAction SilentlyContinue; [System.GC]::Collect() | Out-Null",
+        "Remove-Variable _ippsToken -Force -ErrorAction SilentlyContinue; Clear-History; [System.GC]::Collect() | Out-Null",
         5_000,
       );
 
@@ -204,6 +211,14 @@ export class PsExecutor {
       );
       throw err;
     }
+  }
+
+  /** Kill the pwsh process after a timeout; the session cannot be reused. */
+  private terminate(): void {
+    this.terminated = true;
+    this.ready = false;
+    this.proc?.kill();
+    this.proc = null;
   }
 
   async shutdown(): Promise<void> {
@@ -236,10 +251,12 @@ export class PsExecutor {
       "Connect-IPPSSession",
       "Disconnect-ExchangeOnline",
       "Disconnect-IPPSSession",
+      "Get-History",
+      "Invoke-History",
     ];
     const denyMsg = "Disabled by Purview DLM MCP security policy";
     const statements: string[] = [
-      "Remove-Item Alias:iwr, Alias:irm, Alias:iex, Alias:icm, Alias:curl, Alias:wget, Alias:saps -Force -ErrorAction SilentlyContinue",
+      "Remove-Item Alias:iwr, Alias:irm, Alias:iex, Alias:icm, Alias:curl, Alias:wget, Alias:saps, Alias:h, Alias:history, Alias:ghy, Alias:r -Force -ErrorAction SilentlyContinue",
       ...overrides.map((name) => `function global:${name} { throw '${denyMsg}' }`),
     ];
     await this.execRaw(statements.join("; "), 10_000);
@@ -347,7 +364,8 @@ export class PsExecutor {
 
   async execute(command: string): Promise<PsResult> {
     if (!this.ready) {
-      return { success: false, output: "", error: "PowerShell session not initialized" };
+      const error = this.terminated ? SESSION_TERMINATED : "PowerShell session not initialized";
+      return { success: false, output: "", error };
     }
     const v = validateCommand(command);
     if (!v.valid) {
@@ -391,9 +409,14 @@ export class PsExecutor {
         `try { ${command} } catch { Write-Output "PS_ERROR: $($_.Exception.Message)" }; ` +
         `Write-Output '${marker}'\n`;
 
+      // A timed-out command keeps running in the shared pwsh process, and its
+      // late output would surface inside the next command's result. Kill the
+      // process so no later command can receive another command's output.
       const timeout = setTimeout(() => {
+        clearInterval(poll);
         this.telemetry?.trackEvent("CommandTimeout", {}, { timeoutMs });
-        reject(new Error("Command timed out"));
+        this.terminate();
+        reject(new Error(`Command timed out after ${timeoutMs}ms. ${SESSION_TERMINATED}`));
       }, timeoutMs);
 
       const poll = setInterval(() => {

@@ -450,6 +450,11 @@ export function buildValidatedCommand(command: string): string {
             throw 'Only local diagnostic variable assignments are allowed'
           }
         }
+        BinaryExpressionAst {
+          # -as converts to any type named by a string and invokes its constructor,
+          # e.g. 'path' -as 'System.IO.StreamWriter' creates or truncates a file.
+          if ($node.Operator -eq 'As') { throw 'The -as operator is not allowed; use a diagnostic cast such as [string]' }
+        }
         UnaryExpressionAst {
           if ($node.TokenKind -match 'PlusPlus|MinusMinus') { throw 'Increment and decrement are not allowed' }
         }
