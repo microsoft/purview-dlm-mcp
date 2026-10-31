@@ -16,7 +16,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server for d
 ## Prerequisites
 
 - [Node.js 18+](https://nodejs.org/)
-- [PowerShell 7](https://github.com/PowerShell/PowerShell)
+- [PowerShell 7](https://github.com/PowerShell/PowerShell) — 7.4.22, 7.5.13, 7.6.9 or later. PowerShell bundles its own .NET runtime, and earlier builds are exposed to [CVE-2026-111497](https://devblogs.microsoft.com/dotnet/dotnet-october-2026-oob-security-updates/); updating the system .NET does not patch `pwsh`.
 - [ExchangeOnlineManagement](https://www.powershellgallery.com/packages/ExchangeOnlineManagement) PowerShell module (v3.4+)
 - An admin account with the required permissions (see [Required Permissions](#required-permissions) below)
 
