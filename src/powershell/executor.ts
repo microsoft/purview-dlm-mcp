@@ -5,6 +5,7 @@ import { spawn, type ChildProcess } from "child_process";
 import { randomUUID } from "crypto";
 import { buildValidatedCommand, guardAliases, validateCommand } from "./allowlist.js";
 import { COMMAND_TIMEOUT_MS } from "../config.js";
+import { stripAnsi } from "../tsg-diagnostics.js";
 import type { Telemetry } from "../telemetry.js";
 
 // ─── Environment Isolation ───
@@ -442,7 +443,9 @@ export class PsExecutor {
         if (idx !== -1) {
           clearInterval(poll);
           clearTimeout(timeout);
-          const output = this.buf.substring(0, idx).trim();
+          // On Linux/macOS pwsh prefixes output with terminal control codes
+          // (e.g. `\x1b[?1l`), which would hide a leading "PS_ERROR:".
+          const output = stripAnsi(this.buf.substring(0, idx)).trim();
           this.buf = this.buf.substring(idx + marker.length);
           resolve(output);
         }

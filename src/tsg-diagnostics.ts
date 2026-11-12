@@ -74,10 +74,13 @@ export interface TsgResult {
 // Output Parsers (from diagnostics/outputParsers.ts)
 // ============================================================================
 
-/** Strip ANSI escape codes from text. */
+/**
+ * Strip ANSI escape codes from text: colors (`\x1b[32m`) and other CSI
+ * sequences such as the `\x1b[?1l` cursor-mode reset pwsh emits on Linux.
+ */
 export function stripAnsi(text: string): string {
   // eslint-disable-next-line no-control-regex
-  return text.replace(/\u001b\[[0-9;]*m/g, "");
+  return text.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "");
 }
 
 /**
